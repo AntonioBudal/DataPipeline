@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PublicMigrationMapping = void 0;
+class PublicMigrationMapping {
+    static getAttributeTypeMap() {
+        return PublicMigrationMapping.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.PublicMigrationMapping = PublicMigrationMapping;
+PublicMigrationMapping.discriminator = undefined;
+PublicMigrationMapping.attributeTypeMap = [
+    {
+        "name": "listId",
+        "baseName": "listId",
+        "type": "string",
+        "format": ""
+    },
+    {
+        "name": "legacyListId",
+        "baseName": "legacyListId",
+        "type": "string",
+        "format": ""
+    }
+];
+//# sourceMappingURL=PublicMigrationMapping.js.map

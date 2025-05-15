@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ApiCollectionResponseRecordListMembershipNoPaging = void 0;
+class ApiCollectionResponseRecordListMembershipNoPaging {
+    static getAttributeTypeMap() {
+        return ApiCollectionResponseRecordListMembershipNoPaging.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.ApiCollectionResponseRecordListMembershipNoPaging = ApiCollectionResponseRecordListMembershipNoPaging;
+ApiCollectionResponseRecordListMembershipNoPaging.discriminator = undefined;
+ApiCollectionResponseRecordListMembershipNoPaging.attributeTypeMap = [
+    {
+        "name": "total",
+        "baseName": "total",
+        "type": "number",
+        "format": "int64"
+    },
+    {
+        "name": "results",
+        "baseName": "results",
+        "type": "Array<RecordListMembership>",
+        "format": ""
+    }
+];
+//# sourceMappingURL=ApiCollectionResponseRecordListMembershipNoPaging.js.map

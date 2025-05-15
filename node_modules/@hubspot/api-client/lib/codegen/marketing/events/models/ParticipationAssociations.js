@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ParticipationAssociations = void 0;
+class ParticipationAssociations {
+    static getAttributeTypeMap() {
+        return ParticipationAssociations.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.ParticipationAssociations = ParticipationAssociations;
+ParticipationAssociations.discriminator = undefined;
+ParticipationAssociations.attributeTypeMap = [
+    {
+        "name": "marketingEvent",
+        "baseName": "marketingEvent",
+        "type": "MarketingEventAssociation",
+        "format": ""
+    },
+    {
+        "name": "contact",
+        "baseName": "contact",
+        "type": "ContactAssociation",
+        "format": ""
+    }
+];
+//# sourceMappingURL=ParticipationAssociations.js.map

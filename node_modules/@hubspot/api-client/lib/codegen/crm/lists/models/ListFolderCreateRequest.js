@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ListFolderCreateRequest = void 0;
+class ListFolderCreateRequest {
+    static getAttributeTypeMap() {
+        return ListFolderCreateRequest.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.ListFolderCreateRequest = ListFolderCreateRequest;
+ListFolderCreateRequest.discriminator = undefined;
+ListFolderCreateRequest.attributeTypeMap = [
+    {
+        "name": "parentFolderId",
+        "baseName": "parentFolderId",
+        "type": "string",
+        "format": ""
+    },
+    {
+        "name": "name",
+        "baseName": "name",
+        "type": "string",
+        "format": ""
+    }
+];
+//# sourceMappingURL=ListFolderCreateRequest.js.map

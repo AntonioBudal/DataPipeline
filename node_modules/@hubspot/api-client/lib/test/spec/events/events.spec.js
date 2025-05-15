@@ -1,0 +1,17 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const index_1 = require("../../../codegen/events/index");
+const index_2 = require("../../../index");
+const SendDiscovery_1 = __importDefault(require("../../../src/discovery/events/send/SendDiscovery"));
+describe('api client', () => {
+    it('is discoverable', () => {
+        const client = new index_2.Client().events;
+        expect(client.hasOwnProperty('eventsApi')).toBeTruthy();
+        expect(index_1.EventsApi.name).toBe(client.eventsApi.constructor.name);
+        expect(SendDiscovery_1.default.name).toBe(client.send.constructor.name);
+    });
+});
+//# sourceMappingURL=events.spec.js.map

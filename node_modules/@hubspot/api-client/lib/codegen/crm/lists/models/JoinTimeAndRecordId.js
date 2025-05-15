@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.JoinTimeAndRecordId = void 0;
+class JoinTimeAndRecordId {
+    static getAttributeTypeMap() {
+        return JoinTimeAndRecordId.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.JoinTimeAndRecordId = JoinTimeAndRecordId;
+JoinTimeAndRecordId.discriminator = undefined;
+JoinTimeAndRecordId.attributeTypeMap = [
+    {
+        "name": "recordId",
+        "baseName": "recordId",
+        "type": "string",
+        "format": ""
+    },
+    {
+        "name": "membershipTimestamp",
+        "baseName": "membershipTimestamp",
+        "type": "Date",
+        "format": "date-time"
+    }
+];
+//# sourceMappingURL=JoinTimeAndRecordId.js.map

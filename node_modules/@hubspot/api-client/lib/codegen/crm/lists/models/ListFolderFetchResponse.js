@@ -1,0 +1,21 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ListFolderFetchResponse = void 0;
+class ListFolderFetchResponse {
+    static getAttributeTypeMap() {
+        return ListFolderFetchResponse.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.ListFolderFetchResponse = ListFolderFetchResponse;
+ListFolderFetchResponse.discriminator = undefined;
+ListFolderFetchResponse.attributeTypeMap = [
+    {
+        "name": "folder",
+        "baseName": "folder",
+        "type": "PublicListFolder",
+        "format": ""
+    }
+];
+//# sourceMappingURL=ListFolderFetchResponse.js.map

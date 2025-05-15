@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ListMoveRequest = void 0;
+class ListMoveRequest {
+    static getAttributeTypeMap() {
+        return ListMoveRequest.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.ListMoveRequest = ListMoveRequest;
+ListMoveRequest.discriminator = undefined;
+ListMoveRequest.attributeTypeMap = [
+    {
+        "name": "listId",
+        "baseName": "listId",
+        "type": "string",
+        "format": ""
+    },
+    {
+        "name": "newFolderId",
+        "baseName": "newFolderId",
+        "type": "string",
+        "format": ""
+    }
+];
+//# sourceMappingURL=ListMoveRequest.js.map

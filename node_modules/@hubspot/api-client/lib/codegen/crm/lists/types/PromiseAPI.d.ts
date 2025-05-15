@@ -1,0 +1,90 @@
+import { HttpInfo } from '../http/http';
+import { Configuration } from '../configuration';
+import { ApiCollectionResponseJoinTimeAndRecordId } from '../models/ApiCollectionResponseJoinTimeAndRecordId';
+import { ApiCollectionResponseRecordListMembershipNoPaging } from '../models/ApiCollectionResponseRecordListMembershipNoPaging';
+import { ListCreateRequest } from '../models/ListCreateRequest';
+import { ListCreateResponse } from '../models/ListCreateResponse';
+import { ListFetchResponse } from '../models/ListFetchResponse';
+import { ListFilterUpdateRequest } from '../models/ListFilterUpdateRequest';
+import { ListFolderCreateRequest } from '../models/ListFolderCreateRequest';
+import { ListFolderCreateResponse } from '../models/ListFolderCreateResponse';
+import { ListFolderFetchResponse } from '../models/ListFolderFetchResponse';
+import { ListMoveRequest } from '../models/ListMoveRequest';
+import { ListSearchRequest } from '../models/ListSearchRequest';
+import { ListSearchResponse } from '../models/ListSearchResponse';
+import { ListUpdateResponse } from '../models/ListUpdateResponse';
+import { ListsByIdResponse } from '../models/ListsByIdResponse';
+import { MembershipChangeRequest } from '../models/MembershipChangeRequest';
+import { MembershipsUpdateResponse } from '../models/MembershipsUpdateResponse';
+import { PublicBatchMigrationMapping } from '../models/PublicBatchMigrationMapping';
+import { PublicMigrationMapping } from '../models/PublicMigrationMapping';
+import { FoldersApiRequestFactory, FoldersApiResponseProcessor } from "../apis/FoldersApi";
+export declare class PromiseFoldersApi {
+    private api;
+    constructor(configuration: Configuration, requestFactory?: FoldersApiRequestFactory, responseProcessor?: FoldersApiResponseProcessor);
+    createWithHttpInfo(listFolderCreateRequest: ListFolderCreateRequest, _options?: Configuration): Promise<HttpInfo<ListFolderCreateResponse>>;
+    create(listFolderCreateRequest: ListFolderCreateRequest, _options?: Configuration): Promise<ListFolderCreateResponse>;
+    getAllWithHttpInfo(folderId?: string, _options?: Configuration): Promise<HttpInfo<ListFolderFetchResponse>>;
+    getAll(folderId?: string, _options?: Configuration): Promise<ListFolderFetchResponse>;
+    moveWithHttpInfo(folderId: string, newParentFolderId: string, _options?: Configuration): Promise<HttpInfo<ListFolderFetchResponse>>;
+    move(folderId: string, newParentFolderId: string, _options?: Configuration): Promise<ListFolderFetchResponse>;
+    moveListWithHttpInfo(listMoveRequest: ListMoveRequest, _options?: Configuration): Promise<HttpInfo<void>>;
+    moveList(listMoveRequest: ListMoveRequest, _options?: Configuration): Promise<void>;
+    removeWithHttpInfo(folderId: string, _options?: Configuration): Promise<HttpInfo<void>>;
+    remove(folderId: string, _options?: Configuration): Promise<void>;
+    renameWithHttpInfo(folderId: string, newFolderName?: string, _options?: Configuration): Promise<HttpInfo<ListFolderFetchResponse>>;
+    rename(folderId: string, newFolderName?: string, _options?: Configuration): Promise<ListFolderFetchResponse>;
+}
+import { ListsApiRequestFactory, ListsApiResponseProcessor } from "../apis/ListsApi";
+export declare class PromiseListsApi {
+    private api;
+    constructor(configuration: Configuration, requestFactory?: ListsApiRequestFactory, responseProcessor?: ListsApiResponseProcessor);
+    createWithHttpInfo(listCreateRequest: ListCreateRequest, _options?: Configuration): Promise<HttpInfo<ListCreateResponse>>;
+    create(listCreateRequest: ListCreateRequest, _options?: Configuration): Promise<ListCreateResponse>;
+    doSearchWithHttpInfo(listSearchRequest: ListSearchRequest, _options?: Configuration): Promise<HttpInfo<ListSearchResponse>>;
+    doSearch(listSearchRequest: ListSearchRequest, _options?: Configuration): Promise<ListSearchResponse>;
+    getAllWithHttpInfo(listIds?: Array<string>, includeFilters?: boolean, _options?: Configuration): Promise<HttpInfo<ListsByIdResponse>>;
+    getAll(listIds?: Array<string>, includeFilters?: boolean, _options?: Configuration): Promise<ListsByIdResponse>;
+    getByIdWithHttpInfo(listId: string, includeFilters?: boolean, _options?: Configuration): Promise<HttpInfo<ListFetchResponse>>;
+    getById(listId: string, includeFilters?: boolean, _options?: Configuration): Promise<ListFetchResponse>;
+    getByNameWithHttpInfo(listName: string, objectTypeId: string, includeFilters?: boolean, _options?: Configuration): Promise<HttpInfo<ListFetchResponse>>;
+    getByName(listName: string, objectTypeId: string, includeFilters?: boolean, _options?: Configuration): Promise<ListFetchResponse>;
+    removeWithHttpInfo(listId: string, _options?: Configuration): Promise<HttpInfo<void>>;
+    remove(listId: string, _options?: Configuration): Promise<void>;
+    restoreWithHttpInfo(listId: string, _options?: Configuration): Promise<HttpInfo<void>>;
+    restore(listId: string, _options?: Configuration): Promise<void>;
+    updateListFiltersWithHttpInfo(listId: string, listFilterUpdateRequest: ListFilterUpdateRequest, enrollObjectsInWorkflows?: boolean, _options?: Configuration): Promise<HttpInfo<ListUpdateResponse>>;
+    updateListFilters(listId: string, listFilterUpdateRequest: ListFilterUpdateRequest, enrollObjectsInWorkflows?: boolean, _options?: Configuration): Promise<ListUpdateResponse>;
+    updateNameWithHttpInfo(listId: string, listName?: string, includeFilters?: boolean, _options?: Configuration): Promise<HttpInfo<ListUpdateResponse>>;
+    updateName(listId: string, listName?: string, includeFilters?: boolean, _options?: Configuration): Promise<ListUpdateResponse>;
+}
+import { MappingApiRequestFactory, MappingApiResponseProcessor } from "../apis/MappingApi";
+export declare class PromiseMappingApi {
+    private api;
+    constructor(configuration: Configuration, requestFactory?: MappingApiRequestFactory, responseProcessor?: MappingApiResponseProcessor);
+    translateLegacyListIdToListIdWithHttpInfo(legacyListId?: string, _options?: Configuration): Promise<HttpInfo<PublicMigrationMapping>>;
+    translateLegacyListIdToListId(legacyListId?: string, _options?: Configuration): Promise<PublicMigrationMapping>;
+    translateLegacyListIdToListIdBatchWithHttpInfo(requestBody: Array<string>, _options?: Configuration): Promise<HttpInfo<PublicBatchMigrationMapping>>;
+    translateLegacyListIdToListIdBatch(requestBody: Array<string>, _options?: Configuration): Promise<PublicBatchMigrationMapping>;
+}
+import { MembershipsApiRequestFactory, MembershipsApiResponseProcessor } from "../apis/MembershipsApi";
+export declare class PromiseMembershipsApi {
+    private api;
+    constructor(configuration: Configuration, requestFactory?: MembershipsApiRequestFactory, responseProcessor?: MembershipsApiResponseProcessor);
+    addWithHttpInfo(listId: string, requestBody: Array<string>, _options?: Configuration): Promise<HttpInfo<MembershipsUpdateResponse>>;
+    add(listId: string, requestBody: Array<string>, _options?: Configuration): Promise<MembershipsUpdateResponse>;
+    addAllFromListWithHttpInfo(listId: string, sourceListId: string, _options?: Configuration): Promise<HttpInfo<void>>;
+    addAllFromList(listId: string, sourceListId: string, _options?: Configuration): Promise<void>;
+    addAndRemoveWithHttpInfo(listId: string, membershipChangeRequest: MembershipChangeRequest, _options?: Configuration): Promise<HttpInfo<MembershipsUpdateResponse>>;
+    addAndRemove(listId: string, membershipChangeRequest: MembershipChangeRequest, _options?: Configuration): Promise<MembershipsUpdateResponse>;
+    getListsWithHttpInfo(objectTypeId: string, recordId: string, _options?: Configuration): Promise<HttpInfo<ApiCollectionResponseRecordListMembershipNoPaging>>;
+    getLists(objectTypeId: string, recordId: string, _options?: Configuration): Promise<ApiCollectionResponseRecordListMembershipNoPaging>;
+    getPageWithHttpInfo(listId: string, after?: string, before?: string, limit?: number, _options?: Configuration): Promise<HttpInfo<ApiCollectionResponseJoinTimeAndRecordId>>;
+    getPage(listId: string, after?: string, before?: string, limit?: number, _options?: Configuration): Promise<ApiCollectionResponseJoinTimeAndRecordId>;
+    getPageOrderedByAddedToListDateWithHttpInfo(listId: string, after?: string, before?: string, limit?: number, _options?: Configuration): Promise<HttpInfo<ApiCollectionResponseJoinTimeAndRecordId>>;
+    getPageOrderedByAddedToListDate(listId: string, after?: string, before?: string, limit?: number, _options?: Configuration): Promise<ApiCollectionResponseJoinTimeAndRecordId>;
+    removeWithHttpInfo(listId: string, requestBody: Array<string>, _options?: Configuration): Promise<HttpInfo<MembershipsUpdateResponse>>;
+    remove(listId: string, requestBody: Array<string>, _options?: Configuration): Promise<MembershipsUpdateResponse>;
+    removeAllWithHttpInfo(listId: string, _options?: Configuration): Promise<HttpInfo<void>>;
+    removeAll(listId: string, _options?: Configuration): Promise<void>;
+}

@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BoundedNextPage = void 0;
+class BoundedNextPage {
+    static getAttributeTypeMap() {
+        return BoundedNextPage.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.BoundedNextPage = BoundedNextPage;
+BoundedNextPage.discriminator = undefined;
+BoundedNextPage.attributeTypeMap = [
+    {
+        "name": "offset",
+        "baseName": "offset",
+        "type": "number",
+        "format": "int32"
+    },
+    {
+        "name": "link",
+        "baseName": "link",
+        "type": "string",
+        "format": ""
+    }
+];
+//# sourceMappingURL=BoundedNextPage.js.map

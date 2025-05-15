@@ -1,0 +1,31 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PublicCampaignInfluencedFilterFilterTypeEnum = exports.PublicCampaignInfluencedFilter = void 0;
+class PublicCampaignInfluencedFilter {
+    static getAttributeTypeMap() {
+        return PublicCampaignInfluencedFilter.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.PublicCampaignInfluencedFilter = PublicCampaignInfluencedFilter;
+PublicCampaignInfluencedFilter.discriminator = undefined;
+PublicCampaignInfluencedFilter.attributeTypeMap = [
+    {
+        "name": "campaignId",
+        "baseName": "campaignId",
+        "type": "string",
+        "format": ""
+    },
+    {
+        "name": "filterType",
+        "baseName": "filterType",
+        "type": "PublicCampaignInfluencedFilterFilterTypeEnum",
+        "format": ""
+    }
+];
+var PublicCampaignInfluencedFilterFilterTypeEnum;
+(function (PublicCampaignInfluencedFilterFilterTypeEnum) {
+    PublicCampaignInfluencedFilterFilterTypeEnum["CampaignInfluenced"] = "CAMPAIGN_INFLUENCED";
+})(PublicCampaignInfluencedFilterFilterTypeEnum = exports.PublicCampaignInfluencedFilterFilterTypeEnum || (exports.PublicCampaignInfluencedFilterFilterTypeEnum = {}));
+//# sourceMappingURL=PublicCampaignInfluencedFilter.js.map

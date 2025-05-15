@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.PublicBatchMigrationMapping = void 0;
+class PublicBatchMigrationMapping {
+    static getAttributeTypeMap() {
+        return PublicBatchMigrationMapping.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.PublicBatchMigrationMapping = PublicBatchMigrationMapping;
+PublicBatchMigrationMapping.discriminator = undefined;
+PublicBatchMigrationMapping.attributeTypeMap = [
+    {
+        "name": "legacyListIdsToIdsMapping",
+        "baseName": "legacyListIdsToIdsMapping",
+        "type": "Array<PublicMigrationMapping>",
+        "format": ""
+    },
+    {
+        "name": "missingLegacyListIds",
+        "baseName": "missingLegacyListIds",
+        "type": "Array<string>",
+        "format": ""
+    }
+];
+//# sourceMappingURL=PublicBatchMigrationMapping.js.map

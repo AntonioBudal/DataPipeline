@@ -1,0 +1,33 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MembershipsUpdateResponse = void 0;
+class MembershipsUpdateResponse {
+    static getAttributeTypeMap() {
+        return MembershipsUpdateResponse.attributeTypeMap;
+    }
+    constructor() {
+    }
+}
+exports.MembershipsUpdateResponse = MembershipsUpdateResponse;
+MembershipsUpdateResponse.discriminator = undefined;
+MembershipsUpdateResponse.attributeTypeMap = [
+    {
+        "name": "recordIdsRemoved",
+        "baseName": "recordIdsRemoved",
+        "type": "Array<string>",
+        "format": ""
+    },
+    {
+        "name": "recordsIdsAdded",
+        "baseName": "recordsIdsAdded",
+        "type": "Array<string>",
+        "format": ""
+    },
+    {
+        "name": "recordIdsMissing",
+        "baseName": "recordIdsMissing",
+        "type": "Array<string>",
+        "format": ""
+    }
+];
+//# sourceMappingURL=MembershipsUpdateResponse.js.map
