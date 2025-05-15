@@ -56,10 +56,11 @@ async function executarPipeline() {
 // 👉 Exporta função para execução via Vercel Serverless Function
 module.exports = async (req, res) => {
   try {
-    await executarPipeline();
-    res.status(200).send('✅ Pipeline executado com sucesso');
+    await executarPipeline();                // executa tudo internamente
+    return res.status(200).send('OK');       // retorna apenas "OK"
   } catch (error) {
-    console.error('❌ Pipeline falhou:', error);
-    res.status(500).send('❌ Pipeline falhou: ' + error.message);
+    console.error('Pipeline falhou:', error);
+    return res.status(500).send('ERROR');
   }
 };
+
