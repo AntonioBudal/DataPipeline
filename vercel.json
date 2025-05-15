@@ -4,12 +4,6 @@
     { "src": "src/index.js", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/.*", "dest": "src/index.js" }
-  ],
-  "crons": [
-    {
-      "path": "/",
-      "schedule": "0 0 * * *"
-    }
+    { "src": "/", "dest": "src/index.js" }
   ]
 }
