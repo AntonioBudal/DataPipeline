@@ -19,9 +19,9 @@ try {
     customer_id: config.ads.customerId,
     refresh_token: config.ads.refreshToken,
   });
-  console.log('✅ Cliente Google Ads inicializado com sucesso.');
+  console.log('Cliente Google Ads inicializado com sucesso.');
 } catch (error) {
-  console.error('❌ Erro CRÍTICO ao inicializar o cliente Google Ads:', error.message);
+  console.error('Erro CRÍTICO ao inicializar o cliente Google Ads:', error.message);
   console.error('DEBUG: Google Ads Initialization Error Stack:', error.stack);
 }
 
@@ -30,11 +30,11 @@ try {
   const tokenForHubspot = config.hubspot && config.hubspot.privateAppToken;
   console.log(`DEBUG: Attempting to initialize HubSpot client. Token available (first 5 chars): ${tokenForHubspot ? tokenForHubspot.substring(0, 5) + '...' : 'NO TOKEN'}`);
   if (!tokenForHubspot) {
-    console.error('❌ CRITICAL: HubSpot Private App Token is MISSING in config before client initialization!');
+    console.error('CRITICAL: HubSpot Private App Token is MISSING in config before client initialization!');
     throw new Error('HubSpot Private App Token is missing.');
   }
   hubspotClient = new Hubspot.Client({ accessToken: tokenForHubspot });
-  console.log('✅ Cliente HubSpot inicializado (tentativa).');
+  console.log('Cliente HubSpot inicializado (tentativa).');
 
   if (hubspotClient && hubspotClient.crm && hubspotClient.crm.deals && hubspotClient.crm.deals.searchApi && typeof hubspotClient.crm.deals.searchApi.doSearch === 'function') {
     console.log('DEBUG: hubspotClient.crm.deals.searchApi.doSearch IS a function and available.');
@@ -47,14 +47,14 @@ try {
     console.warn('DEBUG: hubspotClient.marketing.campaigns.getById IS NOT available or not a function (checked at init).');
   }
 } catch (error) {
-  console.error('❌ Erro CRÍTICO ao inicializar o cliente HubSpot:', error.message);
+  console.error('Erro CRÍTICO ao inicializar o cliente HubSpot:', error.message);
   console.error('DEBUG: HubSpot Initialization Error Stack:', error.stack);
   hubspotClient = undefined;
 }
 
 async function fetchCampaigns() {
   if (!adsCustomer) {
-    console.warn('⚠️ Cliente Google Ads não inicializado. Pulando busca de campanhas.');
+    console.warn('Cliente Google Ads não inicializado. Pulando busca de campanhas.');
     return [];
   }
   console.time('ads-fetch');
@@ -73,7 +73,7 @@ async function fetchCampaigns() {
     }
     return campaigns;
   } catch (error) {
-    console.error('❌ Erro ao buscar campanhas do Google Ads:', error);
+    console.error('Erro ao buscar campanhas do Google Ads:', error);
     if (error.errors) console.error('DEBUG: Google Ads API Error Details:', JSON.stringify(error.errors, null, 2));
     if (error.stack) console.error('DEBUG: Google Ads API Error Stack:', error.stack);
     return [];
@@ -85,46 +85,87 @@ async function fetchCampaigns() {
 async function countDeals() {
   console.log('DEBUG: Entered countDeals function.');
   if (!hubspotClient) {
-    console.warn('⚠️ Cliente HubSpot não inicializado. Pulando busca de negócios.');
-    return { totalOpenHubSpotDeals: 0, totalClosedWonHubSpotDeals: 0, dealCampaigns: {} }; // Retornar com nomes consistentes
+    console.warn('Cliente HubSpot não inicializado. Pulando busca de negócios.');
+    return {
+      totalOpenHubSpotDeals: 0,
+      totalClosedWonHubSpotDeals: 0,
+      totalLostHubSpotDeals: 0,
+      dealCampaigns: {}
+    };
   }
   console.log('DEBUG: HubSpot client seems initialized, proceeding to prepare request for deals.');
-  const request = {
-    filterGroups: [],
-    properties: ['dealstage'],
-    associations: ['marketing_campaign'],
-    limit: 100,
-  };
-  console.log('DEBUG: HubSpot search request object for deals:', JSON.stringify(request, null, 2));
 
-  try {
-    console.log('DEBUG: Attempting API call: hubspotClient.crm.deals.searchApi.doSearch(request)...');
-    const response = await hubspotClient.crm.deals.searchApi.doSearch(request);
-    console.log('DEBUG: HubSpot API call for deals search supposedly successful. Number of results:', response.results ? response.results.length : 0);
+  let totalOpenHubSpotDeals = 0;
+  let totalClosedWonHubSpotDeals = 0;
+  let totalLostHubSpotDeals = 0;
+  const dealCampaignsData = {};
 
-    let totalOpenHubSpotDeals = 0; // Nome da variável local atualizado
-    let totalClosedWonHubSpotDeals = 0; // Nome da variável local atualizado
-    const dealCampaignsData = {};
+  // função utilitária para delay
+  const delay = ms => new Promise(res => setTimeout(res, ms));
 
+  let after; // cursor para paginação
+  do {
+    const request = {
+      filterGroups: [],
+      properties: ['dealstage'],
+      associations: ['marketing_campaign'],
+      limit: 100,
+      after
+    };
+    console.log('DEBUG: HubSpot search request object for deals:', JSON.stringify(request, null, 2));
+
+    // lógica de retry em caso de 429
+    let response;
+    const maxAttempts = 5;
+    let attempt = 0;
+    const baseDelay = 500; // ms
+
+    while (attempt < maxAttempts) {
+      try {
+        console.log(`DEBUG: Attempt ${attempt + 1} for doSearch`);
+        response = await hubspotClient.crm.deals.searchApi.doSearch(request);
+        break; // sucesso
+      } catch (err) {
+        const status = err.response?.status || err.code;
+        console.error(`Erro na API HubSpot (tentativa ${attempt + 1}):`, status, err.message);
+        // se for rate limit, espera e tenta de novo
+        if (status === 429 && attempt < maxAttempts - 1) {
+          const wait = baseDelay * Math.pow(2, attempt);
+          console.log(`DEBUG: Rate limit hit, aguardando ${wait}ms antes do retry`);
+          await delay(wait);
+          attempt++;
+          continue;
+        }
+        // falha definitiva
+        console.error('DEBUG: Falha ao buscar negócios, abortando countDeals');
+        return {
+          totalOpenHubSpotDeals: 0,
+          totalClosedWonHubSpotDeals: 0,
+          totalLostHubSpotDeals: 0,
+          dealCampaigns: {}
+        };
+      }
+    }
+
+    console.log('DEBUG: HubSpot API call for deals search successful. Number of results:', response.results?.length);
+    console.log('DEBUG: Paging next.after:', response.paging?.next?.after);
+
+    // processa cada deal retornado
     for (const deal of response.results || []) {
       const dealId = deal.id;
       const currentDealStage = deal.properties.dealstage;
       const associatedCampaignNames = [];
 
-      if (deal.associations && deal.associations.marketing_campaign && deal.associations.marketing_campaign.results && deal.associations.marketing_campaign.results.length > 0) {
+      if (deal.associations?.marketing_campaign?.results?.length) {
         console.log(`DEBUG: Deal ID ${dealId} has ${deal.associations.marketing_campaign.results.length} associated marketing campaigns. Fetching names...`);
-        for (const campaignAssociation of deal.associations.marketing_campaign.results) {
-          const campaignId = campaignAssociation.id;
+        for (const assoc of deal.associations.marketing_campaign.results) {
           try {
-            console.log(`DEBUG: Attempting to fetch campaign details for HubSpot Campaign ID: ${campaignId}`);
-            const campaignResponse = await hubspotClient.marketing.campaigns.getById(campaignId);
-            associatedCampaignNames.push(campaignResponse.name);
-            console.log(`DEBUG: Successfully fetched campaign name: "${campaignResponse.name}" for ID: ${campaignId}`);
-          } catch (campaignError) {
-            console.error(`❌ Erro ao buscar detalhes da campanha HubSpot ID ${campaignId}:`, campaignError.message);
-            if (campaignError.response && campaignError.response.body) console.error(`DEBUG: HubSpot Campaign Fetch Error Body (ID ${campaignId}):`, JSON.stringify(campaignError.response.body, null, 2));
-            else if (campaignError.code) console.error(`DEBUG: HubSpot Campaign Fetch Error Code (ID ${campaignId}):`, campaignError.code);
-            if (campaignError.stack) console.error(`DEBUG: HubSpot Campaign Fetch Error Stack (ID ${campaignId}):`, campaignError.stack);
+            console.log(`DEBUG: Fetching campaign details for ID ${assoc.id}`);
+            const camp = await hubspotClient.marketing.campaigns.getById(assoc.id);
+            associatedCampaignNames.push(camp.name);
+            console.log(`DEBUG: Fetched campaign name: ${camp.name}`);
+          } catch (campErr) {
+            console.error(`Erro ao buscar detalhes da campanha ID ${assoc.id}:`, campErr.message);
             associatedCampaignNames.push('Nome da Campanha Desconhecido');
           }
         }
@@ -132,48 +173,54 @@ async function countDeals() {
 
       dealCampaignsData[dealId] = {
         campaignNames: associatedCampaignNames,
-        dealstage: currentDealStage,
+        dealstage: currentDealStage
       };
 
-      if (currentDealStage === 'closedwon' || currentDealStage === '148309307') {
-        totalClosedWonHubSpotDeals++; // Atualiza a variável com nome novo/consistente
+      // contagem por estágio currentDealStage === 'closedwon' ||
+      if ( currentDealStage === '148309307') {
+        totalClosedWonHubSpotDeals++;
       } else if (currentDealStage === 'closedlost') {
-        // Não faz nada para os contadores de open/won
+        totalLostHubSpotDeals++;
       } else {
-        totalOpenHubSpotDeals++; // Atualiza a variável com nome novo/consistente
+        totalOpenHubSpotDeals++;
       }
     }
-    console.log('DEBUG: Recalculated HubSpot Totals by countDeals:', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals });
-    return { // Retorna o objeto com as chaves correspondentes aos nomes das variáveis
-        totalOpenHubSpotDeals: totalOpenHubSpotDeals,
-        totalClosedWonHubSpotDeals: totalClosedWonHubSpotDeals,
-        dealCampaigns: dealCampaignsData
-    };
 
-  } catch (err) {
-    console.error(`❌ Erro HubSpot ao buscar negócios (deals):`, err.message);
-    if (err.response && err.response.body) console.error('DEBUG: HubSpot API Error Response Body (deals search):', JSON.stringify(err.response.body, null, 2));
-    else if (err.code) console.error('DEBUG: HubSpot Error Code (deals search):', err.code);
-    if (err.stack) console.error('DEBUG: HubSpot Error Stack (deals search):', err.stack);
-    return { totalOpenHubSpotDeals: 0, totalClosedWonHubSpotDeals: 0, dealCampaigns: {} }; // Retornar com nomes consistentes
-  }
+    // atualiza cursor e repete
+    after = response.paging?.next?.after;
+  } while (after);
+
+  console.log('DEBUG: Recalculated HubSpot Totals by countDeals:', {
+    totalOpenHubSpotDeals,
+    totalClosedWonHubSpotDeals,
+    totalLostHubSpotDeals
+  });
+
+  return {
+    totalOpenHubSpotDeals,
+    totalClosedWonHubSpotDeals,
+    totalLostHubSpotDeals,
+    dealCampaigns: dealCampaignsData
+  };
 }
+
+
 
 async function executarPipeline() {
   console.log('🚀 Pipeline iniciado');
   try {
     const googleAdsCampaigns = await fetchCampaigns();
-    console.log('🔍 Campanhas do Google Ads (resultado da busca):', googleAdsCampaigns);
+    console.log('Campanhas do Google Ads (resultado da busca):', googleAdsCampaigns);
 
     // Desestruturação direta, os nomes das variáveis agora são os mesmos que as chaves do objeto retornado
     const { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals, dealCampaigns } = await countDeals();
     
-    console.log('📊 Contagem TOTAL de negócios do HubSpot (de countDeals):', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals });
+    console.log('Contagem TOTAL de negócios do HubSpot (de countDeals):', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals });
 
     const resultsForSheet = [];
 
     if (googleAdsCampaigns && googleAdsCampaigns.length > 0) {
-      console.log(`ℹ️ Processando ${googleAdsCampaigns.length} campanhas do Google Ads...`);
+      console.log(`ℹProcessando ${googleAdsCampaigns.length} campanhas do Google Ads...`);
       for (const adCampaign of googleAdsCampaigns) {
         let openCountForAdCampaign = 0;
         let closedWonCountForAdCampaign = 0;
@@ -183,8 +230,6 @@ async function executarPipeline() {
             const stage = dealCampaigns[dealId].dealstage;
             if (stage === 'closedwon' || stage === '148309307') {
               closedWonCountForAdCampaign++;
-            } else if (stage === 'closedlost') {
-              // Não conta
             } else {
               openCountForAdCampaign++;
             }
@@ -200,7 +245,7 @@ async function executarPipeline() {
       }
     } else if (totalOpenHubSpotDeals > 0 || totalClosedWonHubSpotDeals > 0) {
       // Usa as variáveis desestruturadas diretamente
-      console.log('ℹ️ Nenhuma campanha do Google Ads. Criando linha de resumo para HubSpot.');
+      console.log('Nenhuma campanha do Google Ads. Criando linha de resumo para HubSpot.');
       resultsForSheet.push({
         name: 'HubSpot - Resumo Geral de Negócios',
         network: 'N/A (HubSpot)',
@@ -210,16 +255,16 @@ async function executarPipeline() {
       });
     }
 
-    console.log('📝 Dados combinados antes de escrever na planilha:', resultsForSheet);
+    console.log('Dados combinados antes de escrever na planilha:', resultsForSheet);
 
     if (resultsForSheet.length > 0) {
       await writeToSheet(resultsForSheet);
     } else {
-      console.log('ℹ️ Nenhum dado (nem Ads, nem HubSpot agregado) para escrever na planilha.');
+      console.log('Nenhum dado (nem Ads, nem HubSpot agregado) para escrever na planilha.');
     }
 
   } catch (error) {
-    console.error('❌ Erro no pipeline principal:', error.message);
+    console.error('Erro no pipeline principal:', error.message);
     if (error.stack) console.error('DEBUG: Erro no pipeline principal (Stack):', error.stack);
     throw error;
   }
@@ -229,12 +274,12 @@ export default async function handler(req, res) {
   console.log(`ℹ️ Handler da Vercel invocado. Método: ${req.method}`);
   try {
     await executarPipeline();
-    return res.status(200).send('✅ Pipeline executado com sucesso');
+    return res.status(200).send('Pipeline executado com sucesso');
   } catch (error) {
-    console.error('❌ Pipeline falhou no handler da Vercel (erro pego no handler):', error.message);
+    console.error('Pipeline falhou no handler da Vercel (erro pego no handler):', error.message);
     if (error.stack && !error.message.includes(error.stack.split('\n')[0])) {
         console.error('DEBUG: Pipeline falhou no handler da Vercel (Stack):', error.stack);
     }
-    return res.status(500).send(`❌ Pipeline falhou: ${error.message}`);
+    return res.status(500).send(`Pipeline falhou: ${error.message}`);
   }
 }
