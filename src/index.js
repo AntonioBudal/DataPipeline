@@ -204,20 +204,17 @@ async function countDeals() {
   };
 }
 
-
-
 async function executarPipeline() {
   console.log('🚀 Pipeline iniciado');
   try {
     const googleAdsCampaigns = await fetchCampaigns();
     console.log('Campanhas do Google Ads (resultado da busca):', googleAdsCampaigns);
 
-    // Desestruturação direta, os nomes das variáveis agora são os mesmos que as chaves do objeto retornado
     const { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals, dealCampaigns } = await countDeals();
-    
-    console.log('Contagem TOTAL de negócios do HubSpot (de countDeals):', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals });
+    console.log('📊 Contagem de negócios do HubSpot:', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals });
+    console.log('🤝 Negócios do HubSpot e suas campanhas:', dealCampaigns);
 
-    const resultsForSheet = [];
+    const resultsForAdsSheet = [];
 
     if (googleAdsCampaigns && googleAdsCampaigns.length > 0) {
       console.log(`ℹProcessando ${googleAdsCampaigns.length} campanhas do Google Ads...`);
@@ -235,37 +232,80 @@ async function executarPipeline() {
             }
           }
         }
-        resultsForSheet.push({
-          name: adCampaign.name,
-          network: adCampaign.network,
-          cost: adCampaign.cost,
-          open: openCountForAdCampaign,
-          closed: closedWonCountForAdCampaign,
+        resultsForAdsSheet.push({
+          'Nome da Campanha': adCampaign.name,
+          'Rede': adCampaign.network,
+          'Custo Total no Período': adCampaign.cost.toFixed(2),
+          'Negócios Abertos': openCountForAdCampaign,
+          'Negócios Fechados': closedWonCountForAdCampaign,
         });
       }
+
+      const adsHeaders = ['Nome da Campanha', 'Rede', 'Custo Total no Período', 'Negócios Abertos', 'Negócios Fechados'];
+      await writeToSheet(resultsForAdsSheet, 'Campanhas Ads', adsHeaders);
+      console.log('✅ Dados de campanhas do Google Ads enviados para a aba "Campanhas Ads".');
     } else if (totalOpenHubSpotDeals > 0 || totalClosedWonHubSpotDeals > 0) {
-      // Usa as variáveis desestruturadas diretamente
-      console.log('Nenhuma campanha do Google Ads. Criando linha de resumo para HubSpot.');
-      resultsForSheet.push({
-        name: 'HubSpot - Resumo Geral de Negócios',
-        network: 'N/A (HubSpot)',
-        cost: 0,
-        open: totalOpenHubSpotDeals,       // Uso direto da variável desestruturada
-        closed: totalClosedWonHubSpotDeals, // Uso direto da variável desestruturada
-      });
+      console.log('Nenhuma campanha do Google Ads. Criando linha de resumo para HubSpot na aba "Campanhas Ads".');
+      await writeToSheet([{
+        'Nome da Campanha': 'HubSpot - Resumo Geral de Negócios',
+        'Rede': 'N/A (HubSpot)',
+        'Custo Total no Período': 0,
+        'Negócios Abertos': totalOpenHubSpotDeals,
+        'Negócios Fechados': totalClosedWonHubSpotDeals,
+      }], 'Campanhas Ads', ['Nome da Campanha', 'Rede', 'Custo Total no Período', 'Negócios Abertos', 'Negócios Fechados']);
     }
 
-    console.log('Dados combinados antes de escrever na planilha:', resultsForSheet);
+    // Lista de formulários que você quer analisar
+    const formsToAnalyze = [
+      'Contato Inicial',
+      'Pedido de Orçamento',
+      // Adicione outros nomes de formulários aqui
+    ];
 
-    if (resultsForSheet.length > 0) {
-      await writeToSheet(resultsForSheet);
-    } else {
-      console.log('Nenhum dado (nem Ads, nem HubSpot agregado) para escrever na planilha.');
+    const formDataForSheet = [];
+
+    for (const formName of formsToAnalyze) {
+      const matchingAdCampaign = googleAdsCampaigns.find(campaign => campaign.name === formName);
+      let openDealsForForm = 0;
+      let closedDealsForForm = 0;
+
+      if (matchingAdCampaign) {
+        for (const dealId in dealCampaigns) {
+          if (dealCampaigns[dealId].campaignNames.includes(formName)) {
+            const stage = dealCampaigns[dealId].dealstage;
+            if (stage === 'closedwon' || stage === '148309307') {
+              closedDealsForForm++;
+            } else {
+              openDealsForForm++;
+            }
+          }
+        }
+        formDataForSheet.push({
+          'Nome do Formulário': formName,
+          'Visualizações': 'N/A', // Você precisará obter esses dados de algum lugar
+          'Envios': 'N/A',     // Você precisará obter esses dados de algum lugar
+          'Negócios Abertos': openDealsForForm,
+          'Negócios Fechados': closedDealsForForm,
+        });
+      } else {
+        formDataForSheet.push({
+          'Nome do Formulário': formName,
+          'Visualizações': 'N/A',
+          'Envios': 'N/A',
+          'Negócios Abertos': totalOpenHubSpotDeals,
+          'Negócios Fechados': totalClosedWonHubSpotDeals,
+        });
+      }
     }
+
+    const formHeaders = ['Nome do Formulário', 'Visualizações', 'Envios', 'Negócios Abertos', 'Negócios Fechados'];
+    await writeToSheet(formDataForSheet, 'Dados de Formulários', formHeaders);
+    console.log('✅ Dados de formulários enviados para a aba "Dados de Formulários".');
+
+    console.log('📝 Dados combinados e enviados para as planilhas.');
 
   } catch (error) {
-    console.error('Erro no pipeline principal:', error.message);
-    if (error.stack) console.error('DEBUG: Erro no pipeline principal (Stack):', error.stack);
+    console.error('❌ Erro no pipeline principal:', error);
     throw error;
   }
 }
@@ -278,7 +318,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Pipeline falhou no handler da Vercel (erro pego no handler):', error.message);
     if (error.stack && !error.message.includes(error.stack.split('\n')[0])) {
-        console.error('DEBUG: Pipeline falhou no handler da Vercel (Stack):', error.stack);
+      console.error('DEBUG: Pipeline falhou no handler da Vercel (Stack):', error.stack);
     }
     return res.status(500).send(`Pipeline falhou: ${error.message}`);
   }

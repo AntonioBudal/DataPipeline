@@ -9,22 +9,23 @@ const auth = new google.auth.OAuth2(
 
 auth.setCredentials({ refresh_token: process.env.GOOGLE_SHEETS_REFRESH_TOKEN });
 
-async function writeToSheet(data) {
+async function writeToSheet(data, sheetName = 'Sheet1', headers = []) {
   try {
     const sheets = google.sheets('v4');
     const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
-    const range = 'A1'; // Começar a escrever da célula A1
+    const range = `${sheetName}!A1`; // Especificando a aba e começando na célula A1
     const valueInputOption = 'USER_ENTERED';
-    const values = [
-      ['Nome da Campanha', 'Rede', 'Custo Total no Período', 'Negócios Abertos', 'Negócios Fechados'], // Cabeçalho
-      ...data.map(item => [
-        item.name,
-        item.network,
-        item.cost.toFixed(2),
-        item.open,
-        item.closed,
-      ]),
-    ];
+    let values = [];
+
+    if (headers && headers.length > 0) {
+      values.push(headers); // Adiciona os cabeçalhos se fornecidos
+      values.push(
+        ...data.map(item => Object.values(item)) // Assume que a ordem das propriedades no objeto corresponde aos cabeçalhos
+      );
+    } else {
+      values = data.map(item => Object.values(item)); // Escreve os dados sem cabeçalho
+    }
+
     const resource = {
       values,
     };
@@ -36,9 +37,9 @@ async function writeToSheet(data) {
       resource,
       auth,
     });
-    console.log('✅ Planilha do Google Sheets atualizada com sucesso.');
+    console.log(`✅ Planilha do Google Sheets atualizada com sucesso na aba "${sheetName}".`);
   } catch (error) {
-    console.error('❌ Erro ao atualizar a planilha do Google Sheets:', error);
+    console.error(`❌ Erro ao atualizar a planilha do Google Sheets na aba "${sheetName}":`, error);
     throw error; // Rejoga o erro para ser capturado no pipeline principal
   }
 }
