@@ -4,7 +4,7 @@ const Hubspot = require('@hubspot/api-client');
 // const { google } = require('googleapis'); // Não é usado diretamente em index.js
 
 const config = require('./config');
-const { writeToSheet } = require('./sheetsWriter'); // Assumindo que sheetsWriter.js está no mesmo diretório
+const { writeToSheet } = require('./sheetsWriter'); 
 
 console.log(`DEBUG: HubSpot Token from config (initial load - first 5 chars): ${config.hubspot && config.hubspot.privateAppToken ? config.hubspot.privateAppToken.substring(0, 5) + '...' : 'NOT FOUND or config.hubspot is undefined'}`);
 
@@ -58,35 +58,54 @@ try {
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 async function getContactFormSubmission(contactId) {
+  // Checa inicialização do cliente
   if (!hubspotClient) {
     console.warn('WARN: Cliente HubSpot não inicializado. Impossível buscar envio de formulário.');
     return null;
   }
+
+  // Verifica parâmetro
   if (!contactId) {
     console.log('DEBUG: contactId não fornecido para getContactFormSubmission.');
     return null;
   }
   console.log(`DEBUG: Iniciando busca de envio de formulário para contactId: ${contactId}`);
+
   try {
+    // 1. Buscar associações de engajamento
+    console.log('DEBUG: Chamando associations.v4.basicApi.getPage...');
     const associatedEngagementsResponse = await hubspotClient.crm.associations.v4.basicApi.getPage(
       'contacts', contactId, 'engagements'
     );
-    const engagementIds = associatedEngagementsResponse.results.map(assoc => assoc.toObjectId);
-    if (!engagementIds || engagementIds.length === 0) {
+    console.log('DEBUG: Resposta de associações:', JSON.stringify(associatedEngagementsResponse, null, 2));
+
+    const engagementIds = (associatedEngagementsResponse.results || []).map(assoc => assoc.toObjectId);
+    console.log(`DEBUG: engagementIds extraídos (count=${engagementIds.length}):`, engagementIds);
+    if (!engagementIds.length) {
       console.log(`DEBUG: Nenhum engajamento encontrado para contactId: ${contactId}`);
       return null;
     }
+
+    // 2. Ler detalhes dos engajamentos
     const propertiesToFetch = ['hs_engagement_type', 'hs_createdate', 'metadata'];
     const batchReadRequest = {
       inputs: engagementIds.map(id => ({ id })),
       properties: propertiesToFetch,
     };
+    console.log('DEBUG: batchReadRequest:', JSON.stringify(batchReadRequest, null, 2));
+
     const engagementDetails = await hubspotClient.crm.engagements.batchApi.read(batchReadRequest, false);
+    console.log('DEBUG: Resposta batchApi.read:', JSON.stringify(engagementDetails, null, 2));
+
+    // 3. Filtrar FORM_SUBMISSION
     let latestFormSubmission = null;
-    for (const engagement of engagementDetails.results) {
-      if (engagement.properties.hs_engagement_type === 'FORM_SUBMISSION') {
-        const engagementCreateDate = engagement.properties.hs_createdate;
-        if (!latestFormSubmission || (engagementCreateDate && new Date(engagementCreateDate) > new Date(latestFormSubmission.properties.hs_createdate))) {
+    for (const engagement of engagementDetails.results || []) {
+      const type = engagement.properties.hs_engagement_type;
+      const created = engagement.properties.hs_createdate;
+      console.log(`DEBUG: Engagement ID=${engagement.id}, type=${type}, createdate=${created}`);
+      if (type === 'FORM_SUBMISSION') {
+        if (!latestFormSubmission || (created && new Date(created) > new Date(latestFormSubmission.properties.hs_createdate))) {
+          console.log(`DEBUG: Atualizando latestFormSubmission para ID=${engagement.id}`);
           latestFormSubmission = engagement;
         }
       }
@@ -95,17 +114,30 @@ async function getContactFormSubmission(contactId) {
       console.log(`DEBUG: Nenhum engajamento do tipo FORM_SUBMISSION encontrado para contactId: ${contactId}.`);
       return null;
     }
-    let metadata = latestFormSubmission.properties.metadata;
+
+    // 4. Processar metadata
+    const rawMetadata = latestFormSubmission.properties.metadata;
+    console.log('DEBUG: rawMetadata do latestFormSubmission:', rawMetadata);
     let parsedMetadata = null;
-    if (metadata) {
-      if (typeof metadata === 'string') {
-        try { parsedMetadata = JSON.parse(metadata); } catch (e) {
-          console.error(`ERROR: Falha ao parsear metadata (string JSON) para engajamento ${latestFormSubmission.id} do contato ${contactId}:`, e.message);
+    if (rawMetadata) {
+      if (typeof rawMetadata === 'string') {
+        try {
+          parsedMetadata = JSON.parse(rawMetadata);
+          console.log('DEBUG: metadata parseado com sucesso:', parsedMetadata);
+        } catch (e) {
+          console.error(`ERROR: Falha ao parsear metadata (string JSON) para engajamento ${latestFormSubmission.id} do contato ${contactId}:`, e);
         }
-      } else if (typeof metadata === 'object') {
-        parsedMetadata = metadata;
+      } else if (typeof rawMetadata === 'object') {
+        parsedMetadata = rawMetadata;
+        console.log('DEBUG: metadata já é objeto:', parsedMetadata);
+      } else {
+        console.warn('WARN: metadata em formato inesperado:', typeof rawMetadata);
       }
+    } else {
+      console.log('DEBUG: metadata não presente no latestFormSubmission.');
     }
+
+    // 5. Retornar resultado
     if (parsedMetadata && parsedMetadata.formId && parsedMetadata.title) {
       console.log(`DEBUG: Envio de formulário encontrado para contato ${contactId}: Form ID ${parsedMetadata.formId}, Nome: ${parsedMetadata.title}`);
       return { formId: String(parsedMetadata.formId), formName: String(parsedMetadata.title) };
@@ -114,8 +146,9 @@ async function getContactFormSubmission(contactId) {
       return { formId: null, formName: 'Nome do Formulário Indisponível (metadata)' };
     }
   } catch (error) {
-    console.error(`ERRO CRÍTICO ao buscar envio de formulário para contactId ${contactId}:`, error.message);
-    if (error.body) console.error("Detalhes do erro (body):", typeof error.body === 'string' ? error.body : JSON.stringify(error.body));
+    console.error(`ERRO CRÍTICO ao buscar envio de formulário para contactId ${contactId}:`, error);
+    if (error.body) console.error('Detalhes do erro (body):', typeof error.body === 'string' ? error.body : JSON.stringify(error.body, null, 2));
+    console.error('Stack:', error.stack);
     return null;
   }
 }
@@ -147,6 +180,9 @@ async function fetchCampaigns() {
     console.timeEnd('ads-fetch');
   }
 }
+
+
+
 
 async function countDeals() {
   console.log('DEBUG: Entrou na função countDeals.');
@@ -224,7 +260,7 @@ async function countDeals() {
         }
       }
       dealFormSubmissionsData[dealId] = formNameForDeal;
-      if (currentDealStage === 'closedwon' || currentDealStage === '148309307') {
+      if (currentDealStage === '148309307') {
         totalClosedWonHubSpotDeals++;
       } else if (currentDealStage === 'closedlost') {
         totalLostHubSpotDeals++;
@@ -244,138 +280,172 @@ async function countDeals() {
   };
 }
 
+// Retry helper
+// Retry helper
+async function retryableCall(fn, args = [], retries = 3, backoffMs = 500) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn(...args);
+    } catch (e) {
+      const code = e.code || (e.response && e.response.status);
+      if (code === 403) {
+        console.warn('WARN:', fn.name, 'sem escopo necessário:', e.message);
+        return null;
+      }
+      if (code === 429) {
+        const wait = backoffMs * Math.pow(2, i);
+        console.warn(`WARN: Rate limit em ${fn.name}, retry em ${wait}ms (tentativa ${i+1})`);
+        await new Promise(res => setTimeout(res, wait));
+        continue;
+      }
+      throw e;
+    }
+  }
+  console.error(`ERROR: ${fn.name} falhou após ${retries+1} tentativas`);
+  return null;
+}
+
+// Busca o envio de formulário mais recente para um contato
+async function getContactFormSubmission(contactId) {
+  if (!hubspotClient) {
+    console.warn('WARN: Cliente HubSpot não inicializado.');
+    return null;
+  }
+  if (!contactId) {
+    console.log('DEBUG: contactId não fornecido.');
+    return null;
+  }
+  console.log(`DEBUG: Buscando FORM_SUBMISSION para contato ${contactId}`);
+  try {
+    // 1. buscar associações com retry
+    const assocResp = await retryableCall(
+      hubspotClient.crm.associations.v4.basicApi.getPage.bind(hubspotClient.crm.associations.v4.basicApi),
+      ['contacts', contactId, 'engagements']
+    );
+    const engagementIds = (assocResp?.results || []).map(a => a.toObjectId);
+    console.log(`DEBUG: engagementIds(${engagementIds.length}):`, engagementIds);
+    if (!engagementIds.length) return null;
+
+    // 2. ler detalhes com retry
+    const props = ['hs_engagement_type','hs_createdate','metadata'];
+    const batchReq = { inputs: engagementIds.map(id=>({id})), properties: props };
+    const details = await retryableCall(
+      hubspotClient.crm.engagements.batchApi.read.bind(hubspotClient.crm.engagements.batchApi),
+      [batchReq, false]
+    );
+    console.log('DEBUG: detalhes engajamentos:', details?.results.length);
+
+    // 3. filtrar o mais recente
+    let latest = null;
+    for (const eng of (details?.results || [])) {
+      if (eng.properties.hs_engagement_type === 'FORM_SUBMISSION') {
+        const dt = new Date(eng.properties.hs_createdate);
+        if (!latest || dt > new Date(latest.properties.hs_createdate)) {
+          latest = eng;
+        }
+      }
+    }
+    if (!latest) return null;
+
+    // 4. processar metadata
+    let meta = latest.properties.metadata;
+    if (!meta) return { formId: null, formName: 'Sem metadata' };
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch { console.warn('WARN: JSON metadata inválido'); return null; }
+    }
+    return { formId: meta.formId, formName: meta.title || 'Sem title' };
+  } catch (e) {
+    console.error(`ERRO ao buscar FORM_SUBMISSION ${contactId}:`, e.message);
+    return null;
+  }
+}
+
+// Obter contactId a partir de associações deal→contacts
+async function getContactIdFromDeal(dealId) {
+  if (!dealId) return null;
+  const assocResp = await retryableCall(
+    hubspotClient.crm.associations.v4.basicApi.getPage.bind(hubspotClient.crm.associations.v4.basicApi),
+    ['deals', dealId, 'contacts']
+  );
+  const results = assocResp?.results ?? [];
+  return results[0]?.toObjectId || null;
+}
+
+// Pipeline principal
 async function executarPipeline() {
   console.log('🚀 Pipeline iniciado');
   try {
+    // 1. Buscar campanhas do Google Ads
     const googleAdsCampaigns = await fetchCampaigns();
-    const {
-      totalOpenHubSpotDeals, totalClosedWonHubSpotDeals, totalLostHubSpotDeals,
-      dealCampaigns, dealFormSubmissions
-    } = await countDeals();
+    const adsMap = {};
+    googleAdsCampaigns.forEach(ad => adsMap[ad.name] = { network: ad.network, cost: ad.cost });
 
-    console.log('📊 Contagem de negócios HubSpot (Totais):', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals, totalLostHubSpotDeals });
+    // 2. Contar negócios no HubSpot
+    const { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals, dealCampaigns } = await countDeals();
+    console.log('📊 Totais HubSpot:', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals });
 
-    // --- Lógica para Google Ads (aba "Campanhas Ads") ---
-    const resultsForAdsSheet = [];
-    const adsHeaders = ['Nome da Campanha', 'Rede', 'Custo Total no Período', 'Negócios Abertos', 'Negócios Fechados'];
+    // 3. Obter formulario de cada deal
+    const dealForms = {};
+    for (const dealId of Object.keys(dealCampaigns)) {
+      let contactId = dealCampaigns[dealId].contactId;
+      if (!contactId) {
+        contactId = await getContactIdFromDeal(dealId);
+      }
+      if (!contactId) { console.warn(`WARN: dealId ${dealId} sem contactId`); continue; }
+      dealForms[dealId] = await retryableCall(getContactFormSubmission, [contactId]) || 'Desconhecido';
+    }
 
-    if (googleAdsCampaigns && googleAdsCampaigns.length > 0) {
-      console.log(`ℹ️ Processando ${googleAdsCampaigns.length} campanhas do Google Ads...`);
-      for (const adCampaign of googleAdsCampaigns) {
-        let openCountForAdCampaign = 0;
-        let closedWonCountForAdCampaign = 0;
-        for (const dealId in dealCampaigns) {
-          if (dealCampaigns[dealId].campaignNames.includes(adCampaign.name)) {
-            const stage = dealCampaigns[dealId].dealstage;
-            if (stage === 'closedwon' || stage === '148309307') {
-              closedWonCountForAdCampaign++;
-            } else if (stage !== 'closedlost') { // Contar como aberto se não for ganho nem perdido
-              openCountForAdCampaign++;
-            }
-          }
+    // 4. Agrupar dados
+    const aggregation = {};
+    for (const dealId of Object.keys(dealForms)) {
+      const formName = dealForms[dealId];
+      const { campaignNames = [], dealstage } = dealCampaigns[dealId];
+      campaignNames.forEach(camp => {
+        const key = `${camp}||${formName}`;
+        if (!aggregation[key]) {
+          const ad = adsMap[camp] || { network: 'N/A', cost: 0 };
+          aggregation[key] = { campaign: camp, network: ad.network, cost: ad.cost.toFixed(2), received: 0, open: 0, closed: 0 };
         }
-        // FILTRO: Adicionar campanha à planilha somente se tiver negócios associados
-        if (openCountForAdCampaign > 0 || closedWonCountForAdCampaign > 0) {
-          resultsForAdsSheet.push({
-            'Nome da Campanha': adCampaign.name,
-            'Rede': adCampaign.network,
-            'Custo Total no Período': adCampaign.cost.toFixed(2),
-            'Negócios Abertos': openCountForAdCampaign,
-            'Negócios Fechados': closedWonCountForAdCampaign,
-          });
-        } else {
-          console.log(`INFO: Campanha Ads "${adCampaign.name}" não possui negócios HubSpot associados (abertos/ganhos). Não será incluída.`);
-        }
-      }
+        aggregation[key].received++;
+        if (dealstage === 'closedwon' || dealstage === '148309307') aggregation[key].closed++;
+        else if (dealstage !== 'closedlost') aggregation[key].open++;
+      });
     }
 
-    if (resultsForAdsSheet.length > 0) {
-      await writeToSheet(resultsForAdsSheet, 'Campanhas Ads', adsHeaders);
-      console.log(`✅ ${resultsForAdsSheet.length} campanha(s) Ads com negócios enviada(s) para "Campanhas Ads".`);
-    } else if (totalOpenHubSpotDeals > 0 || totalClosedWonHubSpotDeals > 0) {
-      console.log('INFO: Nenhuma campanha do Google Ads com negócios associados. Escrevendo resumo HubSpot em "Campanhas Ads".');
-      await writeToSheet([{
-        'Nome da Campanha': 'HubSpot - Resumo Geral de Negócios',
-        'Rede': 'N/A (HubSpot)',
-        'Custo Total no Período': 0,
-        'Negócios Abertos': totalOpenHubSpotDeals,
-        'Negócios Fechados': totalClosedWonHubSpotDeals,
-      }], 'Campanhas Ads', adsHeaders);
-    } else {
-      console.log('INFO: Nenhuma campanha Ads com negócios e nenhum negócio HubSpot geral para "Campanhas Ads". Aba será limpa com cabeçalhos.');
-      await writeToSheet([], 'Campanhas Ads', adsHeaders); // Limpa e escreve apenas cabeçalhos
-    }
-
-    // --- Lógica para Formulários (aba "Dados de Formulários") - MODIFICADO ---
-    const formDataForSheet = [];
-    const formHeaders = ['Nome do Formulário', 'Visualizações', 'Envios', 'Negócios Abertos', 'Negócios Fechados'];
-    const formNameToCounts = {}; // Objeto para armazenar contagens por nome de formulário
-
-    for (const dealId in dealFormSubmissions) {
-      const formName = dealFormSubmissions[dealId] || 'Formulário Desconhecido (geral)';
-      const dealInfo = dealCampaigns[dealId];
-      const stage = dealInfo ? dealInfo.dealstage : null;
-
-      if (!formNameToCounts[formName]) {
-        formNameToCounts[formName] = {
-          open: 0,
-          closed: 0,
-          // Adicione aqui 'Visualizações' e 'Envios' se você tiver essa informação
-        };
-      }
-
-      if (stage === 'closedwon' || stage === '148309307') {
-        formNameToCounts[formName].closed++;
-      } else if (stage !== 'closedlost' && stage) {
-        formNameToCounts[formName].open++;
-      }
-    }
-
-    for (const formName in formNameToCounts) {
-      const counts = formNameToCounts[formName];
-      if (counts.open > 0 || counts.closed > 0) {
-        formDataForSheet.push({
-          'Nome do Formulário': formName,
-          'Visualizações': 'N/A', // Se disponível, substitua
-          'Envios': 'N/A',     // Se disponível, substitua
-          'Negócios Abertos': counts.open,
-          'Negócios Fechados': counts.closed,
-        });
-      } else {
-        console.log(`INFO: Formulário "${formName}" não possui negócios HubSpot associados (abertos/ganhos). Não será incluído.`);
-      }
-    }
-
-    if (formDataForSheet.length > 0) {
-      await writeToSheet(formDataForSheet, 'Dados de Formulários', formHeaders);
-      console.log(`✅ ${formDataForSheet.length} formulário(s) com negócios enviado(s) para "Dados de Formulários".`);
-    } else {
-      console.log('INFO: Nenhum formulário com negócios associados para "Dados de Formulários". Aba será limpa com cabeçalhos.');
-      await writeToSheet([], 'Dados de Formulários', formHeaders);
-    }
-
-    console.log('📝 Pipeline concluído.');
-
+    // 5. Escrever resultados
+    const rows = Object.values(aggregation).map(item => ({
+      'Nome da Campanha': item.campaign,
+      'Rede': item.network,
+      'Custo Total no Período': item.cost,
+      'Contatos/Formulários Recebidos': item.received,
+      'Negócios Abertos': item.open,
+      'Negócios Fechados': item.closed
+    }));
+    const headers = ['Nome da Campanha','Rede','Custo Total no Período','Contatos/Formulários Recebidos','Negócios Abertos','Negócios Fechados'];
+    await writeToSheet(rows, 'Dados de Formulários', headers);
+    console.log(`✅ Pipeline concluído com ${rows.length} linhas`);
   } catch (error) {
-    console.error('❌ Erro CRÍTICO no pipeline principal:', error.message);
-    console.error('DEBUG: Stack do erro no pipeline principal:', error.stack);
+    console.error('❌ Erro no pipeline:', error.message);
+    console.error(error.stack);
   }
 }
 
-// Vercel Serverless Function Handler
-export default async function handler(req, res) {
+// Vercel Serverless Function Handler (CommonJS)
+async function handler(req, res) {
   const invocationId = Math.random().toString(36).substring(2, 15);
-  console.log(`[${invocationId}] Handler da Vercel invocado. Método: ${req.method}, Hora: ${new Date().toISOString()}`);
+  console.log(`[${invocationId}] Handler invocado. Método: ${req.method}`);
   try {
     await executarPipeline();
     console.log(`[${invocationId}] Pipeline executado com sucesso.`);
-    return res.status(200).send('Pipeline executado com sucesso');
+    res.status(200).send('Pipeline executado com sucesso');
   } catch (error) {
-    console.error(`[${invocationId}] Pipeline falhou no handler da Vercel:`, error.message);
-    if (error.stack) console.error(`DEBUG: [${invocationId}] Stack (handler Vercel):`, error.stack);
-    return res.status(500).send(`Pipeline falhou: ${error.message}`);
+    console.error(`[${invocationId}] Falha no handler:`, error.message);
+    res.status(500).send(`Pipeline falhou: ${error.message}`);
   }
 }
+
+module.exports = handler;
+
 
 // Para execução local (opcional)
 /*
