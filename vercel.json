@@ -1,9 +1,11 @@
 {
   "version": 2,
   "builds": [
-    { "src": "src/index.js", "use": "@vercel/node" }
+    { "src": "src/index.js", "use": "@vercel/node" },
+    { "src": "src/timeline-parser.js", "use": "@vercel/node" }
   ],
   "routes": [
-    { "src": "/", "dest": "src/index.js" }
+    { "src": "/", "dest": "src/index.js" },
+    { "src": "/api/timeline-parser", "dest": "src/timeline-parser.js" }
   ]
 }

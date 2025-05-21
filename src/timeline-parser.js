@@ -149,21 +149,41 @@ async function diagnoseTimelineData() {
                 if (engagement) {
                     console.log(`DEBUG: Detalhes do engajamento ${engagementId} para contato ${contactId}:`);
                     console.log(`DEBUG:   Type: ${engagement.engagement.type}`); // Ex: CALL, EMAIL, FORM_SUBMISSION
-                    // Tentativa de logar o corpo do engajamento, se disponível
+
+                    // Loga o corpo do engajamento, se disponível
                     console.log(`DEBUG:   Body (se disponível): ${engagement.engagement.body ? engagement.engagement.body.substring(0, 500) + '...' : 'N/A'}`);
-                    // Tentativa de logar propriedades do engajamento, se disponíveis
+                    // Loga todas as propriedades do engajamento, se disponíveis
                     console.log(`DEBUG:   Properties (se disponível): ${engagement.properties ? JSON.stringify(engagement.properties).substring(0, 500) + '...' : 'N/A'}`);
 
-                    // Para submissões de formulário, loga propriedades específicas se existirem
+                    let extractedFormName = null;
+                    let extractedFormId = null;
+
+                    // Tenta extrair informações de formulário se for uma submissão de formulário
                     if (engagement.engagement.type === 'FORM_SUBMISSION') {
-                        console.log(`DEBUG:     Form ID (se disponível): ${engagement.properties?.hs_form_id || 'N/A (API indisponível ou propriedade ausente)'}`);
-                        console.log(`DEBUG:     Form Title (se disponível): ${engagement.properties?.hs_form_title || 'N/A (API indisponível ou propriedade ausente)'}`);
+                        // Prioriza propriedades diretas se disponíveis
+                        extractedFormId = engagement.properties?.hs_form_id;
+                        extractedFormName = engagement.properties?.hs_form_title;
+
+                        // Se as propriedades diretas não estiverem disponíveis, tenta parsear do body
+                        if (!extractedFormName && engagement.engagement.body) {
+                            // Exemplo de parsing baseado no formato que você mencionou: "Envio de Formulário #Form PRODUCT PAGE"
+                            const formBodyMatch = engagement.engagement.body.match(/Envio de Formulário\s*(.*)/i);
+                            if (formBodyMatch && formBodyMatch[1]) {
+                                extractedFormName = formBodyMatch[1].trim();
+                                console.log(`DEBUG:     Formulário extraído do body: ${extractedFormName}`);
+                            }
+                        }
+                        console.log(`DEBUG:     Form ID (extraído/disponível): ${extractedFormId || 'N/A'}`);
+                        console.log(`DEBUG:     Form Title (extraído/disponível): ${extractedFormName || 'N/A'}`);
                     }
+
                     engagementsDetails.push({
                         id: engagement.engagement.id,
                         type: engagement.engagement.type,
-                        body: engagement.engagement.body, // Onde o texto da timeline pode estar
-                        properties: engagement.properties // Propriedades mais estruturadas
+                        body: engagement.engagement.body,
+                        properties: engagement.properties,
+                        inferredFormName: extractedFormName, // Adiciona o nome do formulário inferido
+                        inferredFormId: extractedFormId // Adiciona o ID do formulário inferido
                     });
                 } else {
                     console.warn(`WARN: Engajamento ${engagementId} para contato ${contactId} não encontrado ou acesso negado.`);
@@ -177,7 +197,8 @@ async function diagnoseTimelineData() {
     }
 
     console.log('Diagnóstico da timeline concluído.');
-    return { success: true, data: timelineData };
+    // Retorna os dados para análise
+    return { success: true, data: timelineData, message: 'Diagnóstico da timeline concluído. Verifique os logs para detalhes dos engajamentos.' };
 }
 
 // --- Handler da Função Serverless Vercel ---
