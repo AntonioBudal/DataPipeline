@@ -1,75 +1,89 @@
 // index.js - Vercel Serverless Function for HubSpot and Google Ads Data Processing
 
 // Load environment variables from .env file
-require('dotenv').config();
+
 
 // Import necessary libraries
 const { GoogleAdsApi } = require('google-ads-api');
 const Hubspot = require('@hubspot/api-client');
 
+// THIS IS THE CRITICAL LOG TO ADD/MOVE:
+
+// Add similar logs for other Google Ads env vars
+
 // Import local configuration and utility for writing to Google Sheets
-const config = require('./config'); // Assumes a config.js file exists with API keys/tokens
-const { writeToSheet } = require('./sheetsWriter'); // Assumes sheetsWriter.js handles Google Sheets API interaction
+const config = require('./config');
+const { writeToSheet } = require('./sheetsWriter');
+let adsCustomer,adsApi;
 
 // --- Global Client Initializations ---
 // These clients are initialized once when the function starts (cold start)
 // and reused for subsequent invocations (warm start).
 
 // Log initial HubSpot token status for debugging
+console.log(`DEBUG: config.ads.refreshToken from loaded config: ${config.ads.refreshToken ? config.ads.refreshToken.substring(0, 10) + '...' : 'NOT LOADED'}`);
 console.log(`DEBUG: HubSpot Token from config (initial load - first 5 chars): ${config.hubspot && config.hubspot.privateAppToken ? config.hubspot.privateAppToken.substring(0, 5) + '...' : 'NOT FOUND or config.hubspot is undefined'}`);
 
-// Google Ads Client Initialization
-let adsApi, adsCustomer;
-try {
-    // Attempt to initialize Google Ads API client with credentials from config
-    adsApi = new GoogleAdsApi({
-        client_id: config.ads.clientId,
-        client_secret: config.ads.clientSecret,
-        developer_token: config.ads.developerToken,
-    });
-    // Attempt to create a customer instance for specific ad account operations
-    adsCustomer = adsApi.Customer({
-        customer_id: config.ads.customerId,
-        refresh_token: config.ads.refreshToken,
-    });
-    console.log('Cliente Google Ads inicializado com sucesso (mas a permissão do token pode ser um problema).');
-} catch (error) {
-    // Log critical error if Google Ads client initialization fails
-    console.error('ERRO CRÍTICO ao inicializar o cliente Google Ads. Isso pode ser devido a um token de desenvolvedor não aprovado para contas reais, ou outras configurações inválidas.');
-    console.error('DEBUG: Google Ads Initialization Error (detailed):', error.message);
-    adsApi = null; // Ensure clients are null on error to prevent further use
-    adsCustomer = null;
-}
+// --- Log de Variáveis de Ambiente Iniciais (Verificação) ---
+
 
 // HubSpot Client Initialization
 let hubspotClient;
 try {
-    const tokenForHubspot = config.hubspot && config.hubspot.privateAppToken;
-    console.log(`DEBUG: Attempting to initialize HubSpot client. Token available (first 5 chars): ${tokenForHubspot ? tokenForHubspot.substring(0, 5) + '...' : 'NO TOKEN'}`);
-    if (!tokenForHubspot) {
-        // Throw error if HubSpot token is missing, preventing client initialization
-        console.error('CRITICAL: HubSpot Private App Token is MISSING in config before client initialization!');
-        throw new Error('HubSpot Private App Token is missing.');
-    }
-    // Initialize HubSpot API client with the provided access token
-    hubspotClient = new Hubspot.Client({ accessToken: tokenForHubspot });
-    console.log('Cliente HubSpot inicializado (tentativa).');
+  const hubspotToken = process.env.HUBSPOT_PRIVATE_APP_TOKEN || (config.hubspot && config.hubspot.privateAppToken);
+  if (!hubspotToken) {
+    console.error('CRITICAL (HubSpot): HUBSPOT_PRIVATE_APP_TOKEN (ou config.hubspot.privateAppToken) não encontrado!');
+    throw new Error('HubSpot Private App Token não fornecido.');
+  }
+  console.log(`INFO (HubSpot): Tentando inicializar cliente HubSpot com token (primeiros 5 chars): ${hubspotToken.substring(0, 5)}...`);
+  hubspotClient = new Hubspot.Client({ accessToken: hubspotToken });
+  console.log('✅ Cliente HubSpot inicializado com sucesso (tentativa).');
 
-    // --- CRITICAL API AVAILABILITY CHECKS ---
-    // These checks confirm if specific API methods are available on the client instance.
-    // If a method logs 'NOT available', it indicates a missing scope/permission for your Private App Token.
-    console.log(`DEBUG: hubspotClient.crm.contacts.basicApi.getPage IS ${hubspotClient.crm.contacts?.basicApi?.getPage && typeof hubspotClient.crm.contacts.basicApi.getPage === 'function' ? '' : 'NOT '}available.`);
-    console.log(`DEBUG: hubspotClient.crm.deals.batchApi.read IS ${hubspotClient.crm.deals?.batchApi?.read && typeof hubspotClient.crm.deals.batchApi.read === 'function' ? '' : 'NOT '}available.`);
-    console.log(`DEBUG: hubspotClient.marketing.forms.v3.statisticsApi.getById IS ${hubspotClient.marketing.forms?.v3?.statisticsApi?.getById && typeof hubspotClient.marketing.forms.v3.statisticsApi.getById === 'function' ? '' : 'NOT '}available.`);
-    console.log(`DEBUG: hubspotClient.crm.objects.form_submissions.batchApi.read IS ${hubspotClient.crm.objects.form_submissions?.batchApi?.read && typeof hubspotClient.crm.objects.form_submissions.batchApi.read === 'function' ? '' : 'NOT '}available.`);
-    console.log(`DEBUG: hubspotClient.marketing.campaigns.campaignsApi.getById IS ${hubspotClient.marketing.campaigns?.campaignsApi?.getById && typeof hubspotClient.marketing.campaigns.campaignsApi.getById === 'function' ? '' : 'NOT '}available.`);
-
+  // Verificações de disponibilidade da API HubSpot (indicativo de escopos do token)
+  console.log(`DEBUG (HubSpot API Check): crm.contacts.basicApi.getPage IS ${hubspotClient.crm?.contacts?.basicApi?.getPage ? '' : 'NOT '}available.`);
+  console.log(`DEBUG (HubSpot API Check): crm.deals.batchApi.read IS ${hubspotClient.crm?.deals?.batchApi?.read ? '' : 'NOT '}available.`);
+  console.log(`DEBUG (HubSpot API Check): marketing.forms.v3.statisticsApi.getById IS ${hubspotClient.marketing?.forms?.v3?.statisticsApi?.getById ? '' : 'NOT '}available.`);
+  // Adicione mais verificações conforme necessário
 } catch (error) {
-    // Log critical error if HubSpot client initialization fails
-    console.error('Erro CRÍTICO ao inicializar o cliente HubSpot:', error.message);
-    console.error('DEBUG: HubSpot Initialization Error Stack:', error.stack);
-    hubspotClient = undefined; // Ensure client is undefined on error to prevent further use
+  console.error('❌ CRITICAL (HubSpot): Erro ao inicializar o cliente HubSpot:', error.message);
+  console.error('DEBUG (HubSpot): Stack de erro da inicialização:', error.stack);
+  hubspotClient = undefined;
 }
+
+console.log("--- Inicialização do Google Ads Client ---");
+
+try {
+    const adsClientId = process.env.GOOGLE_ADS_CLIENT_ID;
+    const adsClientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+    const adsDeveloperToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    const adsRefreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+    const adsCustomerId = process.env.GOOGLE_ADS_CUSTOMER_ID;
+    const adsLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID; // Optional
+
+    if (adsClientId && adsClientSecret && adsDeveloperToken && adsRefreshToken && adsCustomerId) {
+        adsApi = new GoogleAdsApi({
+            client_id: adsClientId,
+            client_secret: adsClientSecret,
+            developer_token: adsDeveloperToken,
+            refresh_token: adsRefreshToken
+        });
+        console.log('✅ GoogleAdsApi instanciada com sucesso.');
+
+        // Initialize adsCustomer using adsApi
+        adsCustomer = adsApi.Customer({
+            customer_id: adsCustomerId,
+            // login_customer_id: adsLoginCustomerId // Uncomment if using MCC
+        });
+        console.log(`✅ adsCustomer instanciado com sucesso para o ID: ${adsCustomerId}`);
+    } else {
+        console.warn('WARN: Uma ou mais variáveis de ambiente do Google Ads estão faltando. Cliente não inicializado.');
+    }
+} catch (error) {
+    console.error('❌ CRITICAL: Erro ao inicializar o cliente do Google Ads:', error.message);
+    console.error('DEBUG: Stack trace do erro de inicialização do Google Ads:', error.stack);
+}
+
+console.log("-----------------------------------------");
 
 // Helper function for introducing delays (e.g., for rate limiting)
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -118,34 +132,83 @@ async function retryableCall(fn, args = [], retries = 3, baseBackoffMs = 2000) {
  * Fetches Google Ads campaigns. Skips if Google Ads client is not initialized.
  * @returns {Promise<Array<Object>>} - An array of Google Ads campaign objects.
  */
+// Function to format date to YYYY-MM-DD
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+
+
 async function fetchCampaigns() {
+    console.log('DEBUG: Entrou em fetchCampaigns.');
     if (!adsCustomer) {
-        console.log('INFO: Cliente Google Ads não configurado ou inicializado corretamente. Pulando busca de campanhas.');
+        console.warn('WARN (fetchCampaigns): Cliente Google Ads (adsCustomer) não configurado ou inicializado corretamente. Pulando busca de campanhas.');
         return [];
     }
-    console.time('ads-fetch'); // Start timer for Google Ads fetch operation
+    console.log('INFO (fetchCampaigns): adsCustomer está definido, prosseguindo.');
+    // Log adicional para verificar o customer ID que a biblioteca PODE estar usando
+    // A forma de acessar isso depende da implementação da biblioteca 'google-ads-api'
+    if (adsCustomer.options) { // Exemplo, pode não ser 'options'
+        console.log(`DEBUG (fetchCampaigns): adsCustomer.options (pode conter IDs): ${JSON.stringify(adsCustomer.options, null, 2)}`);
+    } else {
+        console.log(`DEBUG (fetchCampaigns): Não foi possível logar adsCustomer.options.`);
+    }
+    // Para ter certeza, vamos logar as variáveis de ambiente novamente aqui
+    console.log(`DEBUG (fetchCampaigns immediate env): GOOGLE_ADS_CUSTOMER_ID: ${process.env.GOOGLE_ADS_CUSTOMER_ID}`);
+    console.log(`DEBUG (fetchCampaigns immediate env): GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID}`);
+
+
+    console.time('ads-fetch');
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - 30); // Últimos 30 dias
+    const formattedStartDate = formatDate(startDate);
+    const formattedEndDate = formatDate(endDate);
+
+    console.log(`DEBUG (fetchCampaigns): Buscando campanhas Google Ads para o período: ${formattedStartDate} a ${formattedEndDate}`);
+    let allCampaigns = [];
+
     try {
-        // Stream report for campaigns, attributes, and metrics
+        console.log('DEBUG (fetchCampaigns): Tentando criar report stream para campanhas...');
         const stream = adsCustomer.reportStream({
             entity: 'campaign',
-            attributes: ['campaign.name', 'segments.ad_network_type'],
+            attributes: ['campaign.name', 'segments.ad_network_type', 'campaign.id'], // Adicionado campaign.id para depuração
             metrics: ['metrics.cost_micros'],
-            constraints: { 'campaign.status': ['ENABLED', 'PAUSED'], 'segments.date': 'DURING LAST_30_DAYS' },
+            date_ranges: [{ start_date: formattedStartDate, end_date: formattedEndDate }],
+            // Se você estiver usando um ID de MCC para `adsCustomer` e a biblioteca não lida com `login-customer-id` automaticamente
+            // no construtor de Customer, você PODE precisar de um parâmetro aqui, mas é menos comum para reportStream.
+            // Ex: login_customer_id: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID (verifique a documentação da lib)
         });
-        const campaigns = [];
-        // Iterate through the stream to collect campaign data
+
+        console.log('DEBUG (fetchCampaigns): Stream criado. Iniciando iteração...');
         for await (const row of stream) {
-            const cost = Number(row.metrics.cost_micros) / 1e6; // Convert cost from micros to actual currency
+            const cost = Number(row.metrics.cost_micros) / 1e6;
             const network = row.segments.ad_network_type || 'Desconhecida';
-            campaigns.push({ name: row.campaign.name, network, cost });
+            // console.log(`DEBUG (fetchCampaigns): Linha do stream: Campanha ${row.campaign.name} (ID: ${row.campaign.id}), Custo: ${cost}, Rede: ${network}`);
+            allCampaigns.push({ name: row.campaign.name, id: row.campaign.id, network, cost });
         }
-        return campaigns;
+        console.log(`DEBUG (fetchCampaigns): Iteração do stream finalizada. ${allCampaigns.length} campanhas encontradas.`);
+        return allCampaigns;
+
     } catch (error) {
-        // Warn if there's an error fetching Google Ads campaigns (e.g., due to token permissions)
-        console.warn('WARN: Houve um erro ao buscar campanhas do Google Ads. Isso pode ser esperado se o token de desenvolvedor não tiver acesso total a contas reais.', error.message);
-        return [];
+        console.error('❌ ERROR (fetchCampaigns): Erro detalhado ao buscar campanhas do Google Ads:', JSON.stringify(error, null, 2));
+        // O erro original era: { "errors": [ { "error_code": { "request_error": "INVALID_CUSTOMER_ID" }, "message": "Invalid customer ID 'undefined'." } ] ... }
+        // Este log acima deve capturar essa estrutura se ela ocorrer.
+        console.warn('WARN (fetchCampaigns): Houve um erro ao buscar campanhas do Google Ads. Mensagem:', error.message);
+        if (error.errors && Array.isArray(error.errors)) {
+            error.errors.forEach(errDetail => {
+                if (errDetail.error_code && errDetail.error_code.request_error === "INVALID_CUSTOMER_ID") {
+                    console.error("CRITICAL (fetchCampaigns): A API do Google Ads retornou 'INVALID_CUSTOMER_ID'. Verifique se o ID do cliente usado pela biblioteca é válido e não 'undefined'.");
+                }
+            });
+        }
+        return []; // Retorna array vazio em caso de erro
     } finally {
-        console.timeEnd('ads-fetch'); // End timer for Google Ads fetch operation
+        console.log('DEBUG (fetchCampaigns): Bloco finally executado.');
+        console.timeEnd('ads-fetch');
     }
 }
 
@@ -542,231 +605,158 @@ async function countContactsAndAssociatedDeals() {
 }
 
 /**
- * Main pipeline execution function. Orchestrates data fetching and processing.
- * This function is designed to be called by the Vercel serverless handler.
+ * The main pipeline execution function for the Vercel serverless endpoint.
+ * This function orchestrates fetching data from Google Ads and HubSpot,
+ * processing it, and writing to Google Sheets.
+ * @param {Object} req - The Vercel request object.
+ * @param {Object} res - The Vercel response object.
  */
 async function executarPipeline() {
-    console.log('🚀 Pipeline iniciado');
+    console.log('INFO: Executando pipeline...');
+
+    // --- Environment Variable Check (your existing code) ---
+    console.log('\n--- Verificação Inicial de Variáveis de Ambiente ---');
+    const hubspotPrivateAppToken = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+    const googleAdsClientId = process.env.GOOGLE_ADS_CLIENT_ID;
+    const googleAdsClientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+    const googleAdsDeveloperToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    const googleAdsRefreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+    const googleAdsCustomerId = process.env.GOOGLE_ADS_CUSTOMER_ID;
+    const googleAdsLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+    const googleSheetsClientId = process.env.GOOGLE_SHEETS_CLIENT_ID;
+    const googleSheetsClientSecret = process.env.GOOGLE_SHEETS_CLIENT_SECRET;
+    const googleSheetsRefreshToken = process.env.GOOGLE_SHEETS_REFRESH_TOKEN;
+    const googleSheetsId = process.env.GOOGLE_SHEETS_ID;
+
+    // Log environment variables (your existing ENV_CHECK logic)
+    console.log(`ENV_CHECK: HUBSPOT_PRIVATE_APP_TOKEN: ${hubspotPrivateAppToken ? 'LOADED (first 5: ' + hubspotPrivateAppToken.substring(0,5) + '...)' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_ADS_CLIENT_ID: ${googleAdsClientId ? 'LOADED' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_ADS_CLIENT_SECRET: ${googleAdsClientSecret ? 'LOADED (first 5: ' + googleAdsClientSecret.substring(0,5) + '...)' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_ADS_DEVELOPER_TOKEN: ${googleAdsDeveloperToken ? 'LOADED' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_ADS_REFRESH_TOKEN: ${googleAdsRefreshToken ? 'LOADED (first 5: ' + googleAdsRefreshToken.substring(0,5) + '...)' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_ADS_CUSTOMER_ID: ${googleAdsCustomerId || 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_ADS_LOGIN_CUSTOMER_ID: ${googleAdsLoginCustomerId || 'NOT SET'} (opcional, usado se GOOGLE_ADS_CUSTOMER_ID for uma MCC)`);
+    console.log(`ENV_CHECK: GOOGLE_SHEETS_CLIENT_ID: ${googleSheetsClientId ? 'LOADED' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_SHEETS_CLIENT_SECRET: ${googleSheetsClientSecret ? 'LOADED (first 5: ' + googleSheetsClientSecret.substring(0,5) + '...)' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_SHEETS_REFRESH_TOKEN: ${googleSheetsRefreshToken ? 'LOADED (first 5: ' + googleSheetsRefreshToken.substring(0,5) + '...)' : 'NOT SET'}`);
+    console.log(`ENV_CHECK: GOOGLE_SHEETS_ID: ${googleSheetsId ? 'LOADED (first 5: ' + googleSheetsId.substring(0,5) + '...)' : 'NOT SET'}`);
+    console.log('----------------------------------------------------\n');
+
+
+    // --- NEW/UPDATED GOOGLE ADS CLIENT INITIALIZATION WITH MORE DEBUGGING ---
+    console.log('DEBUG: Tentando inicializar o cliente Google Ads...');
     try {
-        const googleAdsCampaigns = await fetchCampaigns();
+        if (googleAdsClientId && googleAdsClientSecret && googleAdsDeveloperToken && googleAdsRefreshToken && googleAdsCustomerId) {
 
-        const {
-            totalOpenHubSpotDeals,
-            totalClosedWonHubSpotDeals,
-            totalLostHubspotDeals,
-            contactsWithDeals,
-            contactsWithoutDeals,
-            dealCampaigns,
-            contactFormSubmissions,
-            contactToDealIdsMap,
-            dealDetailsMap
-        } = await countContactsAndAssociatedDeals();
+            // --- EXTREMELY DETAILED LOGGING OF GOOGLE ADS VARIABLES ---
+            console.log(`DEBUG (Ads Init): googleAdsClientId type: ${typeof googleAdsClientId}, value: '${googleAdsClientId}'`);
+            console.log(`DEBUG (Ads Init): googleAdsClientSecret type: ${typeof googleAdsClientSecret}, value: '${googleAdsClientSecret.substring(0, 10)}...'`); // Partial log for security
+            console.log(`DEBUG (Ads Init): googleAdsDeveloperToken type: ${typeof googleAdsDeveloperToken}, value: '${googleAdsDeveloperToken}'`);
+            console.log(`DEBUG (Ads Init): googleAdsRefreshToken type: ${typeof googleAdsRefreshToken}, value: '${googleAdsRefreshToken.substring(0, 10)}...'`); // Partial log for security
+            // console.log(`DEBUG (Ads Init): googleAdsRefreshToken FULL VALUE: '${googleAdsRefreshToken}'`); // UNCOMMENT TEMPORARILY FOR EXTREME DEBUG, REMOVE IMMEDIATELY AFTERWARDS
+            console.log(`DEBUG (Ads Init): googleAdsCustomerId type: ${typeof googleAdsCustomerId}, value: '${googleAdsCustomerId}'`);
+            // --- END EXTREMELY DETAILED LOGGING ---
 
-        // --- ENHANCED DEBUG AND VALIDATION ---
-        console.log(`DEBUG: After countContactsAndAssociatedDeals() call.`);
-        console.log(`DEBUG: Type of contactToDealIdsMap: ${typeof contactToDealIdsMap}`);
-        console.log(`DEBUG: Is contactToDealIdsMap null? ${contactToDealIdsMap === null}`);
-        console.log(`DEBUG: Is contactToDealIdsMap undefined? ${contactToDealIdsMap === undefined}`);
+            adsApi = new GoogleAdsApi({
+                client_id: googleAdsClientId,
+                client_secret: googleAdsClientSecret,
+                developer_token: googleAdsDeveloperToken,
+                refresh_token: googleAdsRefreshToken
+            });
+            console.log('✅ DEBUG (Ads Init): GoogleAdsApi instanciada com sucesso.');
 
-        // Critical validation for contactToDealIdsMap
-        if (typeof contactToDealIdsMap !== 'object' || contactToDealIdsMap === null) {
-            console.error("CRITICAL ERROR: contactToDealIdsMap is NOT a valid object after countContactsAndAssociatedDeals() call. Value:", contactToDealIdsMap);
-            throw new Error(`Pipeline initialization failed: contactToDealIdsMap is of unexpected type (${typeof contactToDealIdsMap}) or null.`);
-        }
-        console.log(`DEBUG: contactToDealIdsMap has ${Object.keys(contactToDealIdsMap).length} entries.`);
-        // --- END ENHANCED DEBUG ---
-
-        // Log new contact counts
-        console.log(`📊 Contagem de Contatos HubSpot:`);
-        console.log(`Contatos com Negócios Associados: ${contactsWithDeals}`);
-        console.log(`Contatos sem Negócios Associados: ${contactsWithoutDeals}`);
-        console.log(`---------------------------------`);
-
-        console.log('📊 Contagem de negócios HubSpot (Totais):', { totalOpenHubSpotDeals, totalClosedWonHubSpotDeals, totalLostHubspotDeals });
-
-        const formsAssociatedWithClosedDeals = new Set();
-        const formNameToCounts = {}; // formName -> { open: X, closed: Y, id: formId }
-
-        // Aggregate form data and associate with deals
-        for (const contactId in contactToDealIdsMap) {
-            const formInfo = contactFormSubmissions[contactId];
-            // Skip if no valid form info (e.g., if form_submissions API was unavailable)
-            if (!formInfo || !formInfo.formId) {
-                continue;
+            adsCustomer = adsApi.Customer({
+                customer_id: googleAdsCustomerId,
+                login_customer_id: googleAdsLoginCustomerId // Will be undefined if not set, which is fine
+            });
+            console.log(`✅ DEBUG (Ads Init): adsCustomer instanciado com sucesso para o ID: ${googleAdsCustomerId}.`);
+            // Try to log adsCustomer.options if possible, though previous logs said it failed.
+            try {
+                console.log('DEBUG (Ads Init): adsCustomer options (if available):', JSON.stringify(adsCustomer.options, null, 2));
+            } catch (optErr) {
+                console.warn('WARN (Ads Init): Não foi possível logar adsCustomer.options detalhadamente:', optErr.message);
             }
 
-            const formName = formInfo.formName || 'Formulário Sem Nome'; // Provide a fallback name
-            const formId = formInfo.formId; // Corrected: Use formInfo.formId
-
-            if (!formNameToCounts[formName]) {
-                formNameToCounts[formName] = { open: 0, closed: 0, id: formId };
-            }
-
-            const contactDeals = contactToDealIdsMap[contactId] || [];
-            for (const dealId of contactDeals) {
-                const deal = dealDetailsMap[dealId];
-                if (deal) {
-                    const currentDealStage = deal.properties.dealstage;
-                    if (currentDealStage === 'closedwon' || currentDealStage === config.hubspot.dealStageIdForClosedWon) {
-                        formNameToCounts[formName].closed++;
-                        // Only add real form IDs to this set, as it's for fetching statistics
-                        if (formId !== 'inferred' && formId !== null) {
-                            formsAssociatedWithClosedDeals.add(formId);
-                        }
-                    } else if (currentDealStage !== 'closedlost' && currentDealStage !== config.hubspot.dealStageIdForClosedLost) {
-                        formNameToCounts[formName].open++;
-                    }
-                }
-            }
-        }
-        // DEBUG LOG: Show the populated formNameToCounts map
-        console.log('DEBUG: Conteúdo de formNameToCounts antes de popular a planilha:', JSON.stringify(formNameToCounts, null, 2).substring(0, 1000) + '...'); // Log first 1000 chars
-
-
-        console.log(`DEBUG: Total de ${formsAssociatedWithClosedDeals.size} formulários associados a negócios fechados para buscar estatísticas.`);
-
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(endDate.getDate() - 30); // Last 30 days
-
-        // Conditionally call fetchFormAnalytics based on API availability
-        let formAnalytics = {};
-        // Only attempt to fetch form analytics if the API is available AND there are actual form IDs to query
-        if (hubspotClient.marketing.forms?.v3?.statisticsApi?.getById && typeof hubspotClient.marketing.forms.v3.statisticsApi.getById === 'function' && formsAssociatedWithClosedDeals.size > 0) {
-            formAnalytics = await fetchFormAnalytics(Array.from(formsAssociatedWithClosedDeals), startDate, endDate);
-            console.log(`DEBUG: Estatísticas de formulários obtidas para ${Object.keys(formAnalytics).length} formulários.`);
         } else {
-            console.warn('WARN: HubSpot Forms Statistics API (marketing.forms.v3.statisticsApi.getById) não está disponível ou não há formulários reais para buscar estatísticas. As visualizações e envios dos formulários não serão coletados.');
+            console.warn('WARN: Uma ou mais variáveis de ambiente do Google Ads estão faltando ou são inválidas. Cliente não será inicializado.');
+            // Ensure adsApi and adsCustomer are explicitly null if initialization fails
+            adsApi = null;
+            adsCustomer = null;
         }
-
-        // --- Prepare data for "Campanhas Ads" sheet ---
-        const resultsForAdsSheet = [];
-        const adsHeaders = ['Nome da Campanha', 'Rede', 'Custo Total no Período', 'Negócios Abertos', 'Negócios Fechados'];
-
-        if (googleAdsCampaigns && googleAdsCampaigns.length > 0) {
-            console.log(`ℹ️ Processando ${googleAdsCampaigns.length} campanhas do Google Ads...`);
-            for (const adCampaign of googleAdsCampaigns) {
-                let openCountForAdCampaign = 0;
-                let closedWonCountForAdCampaign = 0;
-
-                // Iterate over all deals to check their associated campaigns
-                for (const dealId in dealDetailsMap) {
-                    const deal = dealDetailsMap[dealId];
-                    const currentDealStage = deal.properties.dealstage;
-
-                    // Check if this deal was influenced by the current ad campaign
-                    // This relies on the deal having 'marketing_campaign' associations
-                    const associatedCampaignsOfDeal = dealCampaigns[dealId]?.campaignNames || [];
-                    const isAssociatedToCurrentAdCampaign = associatedCampaignsOfDeal.includes(adCampaign.name);
-
-                    if (isAssociatedToCurrentAdCampaign) {
-                        if (currentDealStage === 'closedwon' || currentDealStage === config.hubspot.dealStageIdForClosedWon) {
-                            closedWonCountForAdCampaign++;
-                        } else if (currentDealStage !== 'closedlost' && currentDealStage !== config.hubspot.dealStageIdForClosedLost) {
-                            openCountForAdCampaign++;
-                        }
-                    }
-                }
-
-                // Only add campaigns that had associated HubSpot deals (open or closed-won)
-                if (openCountForAdCampaign > 0 || closedWonCountForAdCampaign > 0) {
-                    resultsForAdsSheet.push({
-                        'Nome da Campanha': adCampaign.name,
-                        'Rede': adCampaign.network,
-                        'Custo Total no Período': adCampaign.cost.toFixed(2),
-                        'Negócios Abertos': openCountForAdCampaign,
-                        'Negócios Fechados': closedWonCountForAdCampaign,
-                    });
-                } else {
-                    console.debug(`DEBUG: Campanha Ads "${adCampaign.name}" não possui negócios HubSpot associados (abertos/ganhos). Não será incluída na aba "Campanhas Ads".`);
-                }
-            }
-        }
-
-        if (resultsForAdsSheet.length > 0) {
-            await writeToSheet(resultsForAdsSheet, 'Campanhas Ads', adsHeaders);
-            console.log(`✅ ${resultsForAdsSheet.length} campanha(s) Ads com negócios enviada(s) para "Campanhas Ads".`);
-        } else {
-            console.log('INFO: Nenhuma campanha Ads com negócios associados. Aba "Campanhas Ads" será limpa com cabeçalhos.');
-            await writeToSheet([], 'Campanhas Ads', adsHeaders);
-        }
-
-        // --- Prepare data for "Dados de Formulários" sheet ---
-        const formDataForSheet = [];
-        const formHeaders = ['Nome do Formulário', 'Visualizações', 'Envios', 'Negócios Abertos', 'Negócios Fechados'];
-
-        // Filter and prepare data for the sheet
-        for (const formName in formNameToCounts) {
-            const counts = formNameToCounts[formName];
-            const formId = counts.id; // This will be the formId (real or 'inferred')
-
-            // Include forms that have at least one associated open or closed deal
-            // And exclude the generic "Formulário Não Encontrado" from being a separate row
-            if (counts.closed > 0 || counts.open > 0) {
-                if (formName === 'Formulário Não Encontrado') {
-                    console.log(`INFO: O formulário genérico "Formulário Não Encontrado" possui negócios associados, mas não será incluído na aba "Dados de Formulários" como uma entrada separada.`);
-                    continue; // Skip this entry for the sheet
-                }
-
-                const stats = formId && formId !== 'inferred' ? formAnalytics[formId] : null; // Get view/submission stats only for real form IDs
-
-                formDataForSheet.push({
-                    'Nome do Formulário': formName,
-                    'Visualizações': stats?.views !== undefined ? stats.views : 'N/A (Plano)', // Indicate N/A if stats couldn't be fetched
-                    'Envios': stats?.submissions !== undefined ? stats.submissions : 'N/A (Plano)',
-                    'Negócios Abertos': counts.open,
-                    'Negócios Fechados': counts.closed,
-                });
-            } else {
-                console.log(`INFO: Formulário "${formName}" não possui negócios associados (abertos/ganhos). Não será incluído na aba "Dados de Formulários".`);
-            }
-        }
-
-        if (formDataForSheet.length > 0) {
-            await writeToSheet(formDataForSheet, 'Dados de Formulários', formHeaders);
-            console.log(`✅ ${formDataForSheet.length} formulário(s) com negócios associados enviado(s) para "Dados de Formulários".`);
-        } else {
-            console.log('INFO: Nenhum formulário com negócios associados. Aba "Dados de Formulários" será limpa com cabeçalhos.');
-            await writeToSheet([], 'Dados de Formulários', formHeaders);
-        }
-
-        console.log('✅ Pipeline concluído com sucesso!');
-        return { success: true, message: 'Pipeline executed successfully.' }; // Return a success object
     } catch (error) {
-        console.error('❌ Erro no pipeline:', error.message);
-        console.error('Stack do erro:', error.stack);
-        // Return an error object for the Vercel handler to process
-        return { success: false, error: error.message || 'Unknown error during pipeline execution.' };
+        console.error('❌ CRITICAL ERROR (Ads Init): Erro durante a inicialização do cliente Google Ads:', error.message);
+        console.error('DEBUG (Ads Init): Stack trace do erro de inicialização:', error.stack);
+        adsApi = null;
+        adsCustomer = null; // Ensure they are null if there's an error during instantiation
     }
+    console.log('DEBUG: Finalizou a tentativa de inicialização do cliente Google Ads.\n');
+
+    // --- Rest of your pipeline (fetchCampaigns, countContactsAndAssociatedDeals, etc.) ---
+    // Make sure fetchCampaigns (and any other function using adsApi/adsCustomer)
+    // has a check like `if (adsCustomer)` before proceeding.
+
+    if (adsCustomer) {
+        console.log('DEBUG: Entrou em fetchCampaigns.');
+        console.log('INFO (fetchCampaigns): adsCustomer está definido, prosseguindo.');
+
+        // Your existing fetchCampaigns logic starts here
+        const startDate = '2025-05-03'; // Example, replace with your actual dates
+        const endDate = '2025-06-02';   // Example, replace with your actual dates
+
+        console.log(`DEBUG (fetchCampaigns): Buscando campanhas Google Ads para o período: ${startDate} a ${endDate}`);
+        try {
+            console.log('DEBUG (fetchCampaigns): Tentando criar report stream para campanhas...');
+            const campaignIterator = adsCustomer.reportStream({
+                entity: 'campaign',
+                attributes: ['campaign.id', 'campaign.name', 'metrics.cost_micros'],
+                constraints: [`segments.date BETWEEN '${startDate}' AND '${endDate}'`],
+            });
+            console.log('DEBUG (fetchCampaigns): Stream criado. Iniciando iteração...');
+
+            let totalCostMicros = 0;
+            let campaignCount = 0;
+
+            for await (const row of campaignIterator) {
+                totalCostMicros += parseFloat(row.metrics.cost_micros);
+                campaignCount++;
+            }
+
+            console.log(`INFO: Google Ads: ${campaignCount} campanhas com custos totais recuperadas.`);
+            console.log(`INFO: Custo total Google Ads: ${totalCostMicros / 1000000} (em BRL)`); // Convert micros to currency
+
+        } catch (error) {
+            console.error(`❌ ERROR (fetchCampaigns): Erro detalhado ao buscar campanhas do Google Ads: ${JSON.stringify(error, null, 2)}`);
+            console.warn(`WARN (fetchCampaigns): Houve um erro ao buscar campanhas do Google Ads. Mensagem: ${error.message}`);
+            console.log('DEBUG (fetchCampaigns): Stack trace do erro Google Ads:', error.stack); // More detailed stack trace
+        } finally {
+            console.log('DEBUG (fetchCampaigns): Bloco finally executado.');
+            // Optionally, log how long ads-fetch took, if you have a timing mechanism
+            // console.log('ads-fetch: Xms'); // Placeholder
+        }
+    } else {
+        console.warn('WARN: Google Ads client não inicializado. Pulando a busca de campanhas.');
+    }
+
+    // --- Continue with HubSpot and Google Sheets logic ---
+    console.log('\nDEBUG: Entrou na função countContactsAndAssociatedDeals.');
+    // ... (your existing countContactsAndAssociatedDeals, writeToSheet, etc. calls) ...
+
+    // Example placeholder for calling the next function
+    // await countContactsAndAssociatedDeals(hubspotClient, startDate, endDate);
+    // await writeToSheet(googleSheetsClient, data);
 }
 
+// If your function is a Vercel serverless function handler:
+module.exports = async (req, res) => {
+    // You might want to wrap the entire pipeline in a try-catch for the handler
+    try {
+        await executarPipeline();
+        res.status(200).send('Pipeline executado com sucesso!');
+    } catch (error) {
+        console.error('❌ ERRO CRÍTICO NA EXECUÇÃO DO PIPELINE:', error.message);
+        res.status(500).send('Erro na execução do pipeline.');
+    }
+};
 // --- Vercel Serverless Function Handler ---
 // This is the entry point for Vercel to execute your function.
 // It wraps the main pipeline logic and sends an HTTP response.
-export default async function handler(req, res) {
-    console.log('Vercel Function invoked via HTTP request.');
-
-    // You might want to add basic security checks here, e.g.,
-    // if (req.method !== 'GET') {
-    //     return res.status(405).json({ error: 'Method Not Allowed' });
-    // }
-    // if (req.headers.authorization !== `Bearer ${process.env.YOUR_API_KEY}`) {
-    //     return res.status(401).json({ error: 'Unauthorized' });
-    // }
-
-    try {
-        const result = await executarPipeline(); // Execute your main pipeline logic
-
-        if (result.success) {
-            // If the pipeline ran successfully, send a 200 OK response
-            res.status(200).json({ status: 'success', message: result.message, data: result });
-        } else {
-            // If the pipeline reported an error, send a 500 Internal Server Error
-            res.status(500).json({ status: 'error', message: 'Pipeline execution failed', details: result.error });
-        }
-    } catch (handlerError) {
-        // Catch any unexpected errors that might occur outside of the pipeline's try/catch
-        console.error('Unhandled error in Vercel handler:', handlerError);
-        res.status(500).json({ status: 'error', message: 'Internal Server Error', details: handlerError.message || 'An unexpected error occurred.' });
-    }
-}
