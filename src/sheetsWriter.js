@@ -74,31 +74,30 @@ async function writeToSheet(data, sheetName = 'Sheet1', headers = []) {
     }
 
     let valuesToWrite = [];
-    if (effectiveHeaders.length === 0 && validData.length > 0 && typeof validData[0] === 'object' && !Array.isArray(validData[0])) {
-      console.warn(`WARN: Escrevendo dados na aba "${sheetName}" sem cabeçalhos explícitos. Usando chaves do primeiro item de dados como cabeçalhos.`);
-      effectiveHeaders = Object.keys(validData[0]);
+  
+    if (effectiveHeaders.length > 0) {
+      valuesToWrite.push(effectiveHeaders); // Adiciona os cabeçalhos primeiro
     }
 
-    if (effectiveHeaders.length > 0) {
-      valuesToWrite.push(effectiveHeaders);
-    }
+    // Processa os dados. validData já é um array de arrays (sheetData)
+    validData.forEach(rowArray => {
+        if(Array.isArray(rowArray)) {
+            // Mapeia cada valor para string e adiciona a rowArray diretamente
+            valuesToWrite.push(rowArray.map(value => value !== undefined && value !== null ? String(value) : ''));
+        } else if (typeof rowArray === 'object' && rowArray !== null) {
+            // Este é um fallback, caso validData seja um array de OBJETOS e headers foram dados
+            // Isso cobre o cenário onde você passa [{id:1, name:'A'}, {id:2, name:'B'}] e os headers
+            const row = effectiveHeaders.map(header => {
+                const value = rowArray[header];
+                return value !== undefined && value !== null ? String(value) : '';
+            });
+            valuesToWrite.push(row);
+        } else {
+            console.warn(`WARN (sheetsWriter): Linha de dados inesperada pulada:`, rowArray);
+        }
+    });
 
-    if (effectiveHeaders.length > 0) {
-      validData.forEach(item => {
-        const row = effectiveHeaders.map(header => {
-          const value = item[header];
-          return value !== undefined && value !== null ? String(value) : '';
-        });
-        valuesToWrite.push(row);
-      });
-    } else { // Se não há cabeçalhos, assumimos que 'validData' já é um array de arrays
-       validData.forEach(rowArray => {
-         if(Array.isArray(rowArray)) {
-           valuesToWrite.push(rowArray.map(value => value !== undefined && value !== null ? String(value) : ''));
-         }
-       });
-    }
-    
+
     console.log(`DEBUG: Total de linhas a serem escritas (incluindo cabeçalho, se houver): ${valuesToWrite.length}`);
     if (valuesToWrite.length === 0) {
       console.log(`INFO: Nenhum dado para escrever na aba "${sheetName}" após processamento.`);
