@@ -6,13 +6,12 @@
       "use": "@vercel/node",
       "config": {
         "memory": 1024,
-        "maxDuration": 300
+        "maxDuration": 60 
       }
     },
     {
       "src": "src/timeline-parser.js",
       "use": "@vercel/node"
-    
     }
   ],
   "routes": [
@@ -22,7 +21,7 @@
   "crons": [
     {
       "path": "/",
-      "schedule": "10 18 * * *"
+      "schedule": "30 18 * * *"
     }
   ]
 }
